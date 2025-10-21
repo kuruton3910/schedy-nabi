@@ -1,0 +1,18 @@
+# Frontend (Vite + React)
+frontend/node_modules/
+frontend/dist/
+frontend/.env*
+!frontend/.env.example
+
+# Backend (Java + Maven)
+backend/target/
+backend/*.jar
+backend/application-local.properties
+
+# OS / IDE specific
+.DS_Store
+.idea/
+.vscode/
+
+# Ignore local backend secrets
+backend/src/main/resources/application-local.properties

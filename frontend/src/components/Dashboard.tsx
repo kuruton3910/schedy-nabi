@@ -1,0 +1,135 @@
+import { useState } from "react";
+import { SyncResponse, ManualClassPayload } from "../types";
+import { formatDateTime, summarizeAssignments } from "../utils/format";
+import ErrorBanner from "./common/ErrorBanner";
+import SuccessBanner from "./common/SuccessBanner";
+import NextClassCard from "./NextClassCard";
+import TimetableGrid from "./TimetableGrid";
+import AssignmentsList from "./AssignmentsList";
+import ManualClassForm from "./ManualClassForm";
+
+interface Props {
+  session: SyncResponse;
+  loading: boolean;
+  manualLoading: boolean;
+  error?: string | null;
+  successMessage?: string | null;
+  onRefresh: () => Promise<void>;
+  onLogout: () => void;
+  onManualClass: (payload: ManualClassPayload) => Promise<void>;
+}
+
+const Dashboard = ({
+  session,
+  loading,
+  manualLoading,
+  error,
+  successMessage,
+  onRefresh,
+  onLogout,
+  onManualClass,
+}: Props) => {
+  const [showTimetable, setShowTimetable] = useState(false);
+  const [isEditingTimetable, setIsEditingTimetable] = useState(false);
+
+  const autoCount = session.timetable.filter(
+    (course) => course.source === "AUTO"
+  ).length;
+  const manualCount = session.timetable.length - autoCount;
+  const assignmentSummary = summarizeAssignments(session.assignments);
+
+  return (
+    <div className="dashboard-container">
+      <header className="header">
+        <div>
+          <h1>SchedyNabi</h1>
+          <p
+            className="text-muted"
+            style={{ marginTop: "0.2rem", fontSize: "0.85rem" }}
+          >
+            最終情報取得: {formatDateTime(session.syncedAt)}
+          </p>
+        </div>
+        <div className="header-actions">
+          <button className="button button-secondary" onClick={onLogout}>
+            ログアウト
+          </button>
+          <button
+            className="button button-primary"
+            onClick={onRefresh}
+            disabled={loading}
+          >
+            {loading ? "情報取得中..." : "更新"}
+          </button>
+        </div>
+      </header>
+
+      {error ? <ErrorBanner message={error} /> : null}
+      {successMessage ? <SuccessBanner message={successMessage} /> : null}
+
+      <div className="dashboard-content">
+        <section className="summary-section">
+          <div className="card compact-card">
+            <h2>次の授業</h2>
+            <NextClassCard nextClass={session.nextClass} />
+          </div>
+          <div className="card compact-card">
+            <h2>課題状況</h2>
+            <div className="assignment-summary">
+              <span className="assignment-count">
+                {assignmentSummary.total}
+              </span>
+              <span className="assignment-label">件の課題</span>
+            </div>
+            <AssignmentsList assignments={session.assignments} />
+          </div>
+        </section>
+
+        <section className="timetable-section">
+          <div className="card">
+            <div className="timetable-header">
+              <h2>時間割表</h2>
+              <button
+                className="button button-primary"
+                onClick={() => setShowTimetable(!showTimetable)}
+              >
+                {showTimetable ? "閉じる" : "表示"}
+              </button>
+            </div>
+
+            {showTimetable && (
+              <div className="timetable-content">
+                <div className="timetable-actions">
+                  <button
+                    className="button button-secondary"
+                    onClick={() => setIsEditingTimetable(!isEditingTimetable)}
+                  >
+                    {isEditingTimetable ? "編集終了" : "編集"}
+                  </button>
+                  <span className="text-muted">
+                    自動 {autoCount} 件・手動 {manualCount} 件
+                  </span>
+                </div>
+
+                <TimetableGrid courses={session.timetable} />
+
+                {isEditingTimetable && (
+                  <div className="manual-class-form">
+                    <h3>手動で授業を追加</h3>
+                    <ManualClassForm
+                      username={session.username}
+                      loading={manualLoading}
+                      onSubmit={onManualClass}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+};
+
+export default Dashboard;
