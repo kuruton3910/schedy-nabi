@@ -12,7 +12,9 @@ const buildHeaders = (withJson: boolean): HeadersInit => {
     headers["Content-Type"] = "application/json";
   }
   if (!API_KEY) {
-    console.warn("VITE_API_SYNC_KEY が設定されていません。API へのアクセスは拒否されます。");
+    console.warn(
+      "VITE_API_SYNC_KEY が設定されていません。API へのアクセスは拒否されます。"
+    );
   } else {
     headers["X-API-Key"] = API_KEY;
   }
@@ -70,7 +72,7 @@ export async function sync(
     if (!statusResponse.ok) {
       // 認証失敗(401)か、ジョブが見つからない(404)か、他のエラーか
       if (statusResponse.status === 401) {
-  throw new Error("APIキーが無効です。環境変数を確認してください。");
+        throw new Error("APIキーが無効です。環境変数を確認してください。");
       } else if (statusResponse.status === 404) {
         throw new Error("指定されたジョブIDが見つかりません。");
       }
