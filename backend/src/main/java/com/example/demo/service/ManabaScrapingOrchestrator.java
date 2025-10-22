@@ -81,13 +81,12 @@ public class ManabaScrapingOrchestrator {
     /**
      * 同期処理のメインエントリーポイント。LoginProgressListenerを通じて進捗を通知する。
      */
-    // ★★★ listener引数を追加 ★★★
     public InternalSyncOutcome sync(String username, String password, Map<String, String> existingCookies, LoginProgressListener listener) throws IOException {
         listener.onStatusUpdate("AUTH_START", "認証処理を開始します...");
         if (existingCookies != null && !existingCookies.isEmpty()) {
             try {
                 listener.onStatusUpdate("COOKIE_AUTH", "Cookie認証を試行中...");
-                return scrapeWithExistingCookies(username, existingCookies, listener); // ★ listenerを渡す
+                return scrapeWithExistingCookies(username, existingCookies, listener);
             } catch (IOException e) {
                 log.warn("Cookie認証に失敗しました: {}", e.getMessage());
                 listener.onStatusUpdate("COOKIE_FAIL", "Cookie認証失敗。パスワード認証に移行します。");
@@ -100,10 +99,9 @@ public class ManabaScrapingOrchestrator {
         }
 
         listener.onStatusUpdate("PASSWORD_AUTH", "パスワード認証を開始します...");
-        return loginAndScrape(username, password, listener); // ★ listenerを渡す
+        return loginAndScrape(username, password, listener);
     }
 
-    // ★★★ listener引数を追加 ★★★
     private InternalSyncOutcome scrapeWithExistingCookies(String username, Map<String, String> cookies, LoginProgressListener listener) throws IOException {
         listener.onStatusUpdate("FETCH_HOME", "ホーム画面を取得中...");
         Document homeDoc = Jsoup.connect(HOME_COURSE_URL)
@@ -112,20 +110,24 @@ public class ManabaScrapingOrchestrator {
             throw new IOException("Cookieの有効期限が切れています。");
         }
         listener.onStatusUpdate("FETCH_HOME_SUCCESS", "ホーム画面の取得成功。");
-        return buildInternalSyncOutcome(username, cookies, listener); // ★ listenerを渡す
+        return buildInternalSyncOutcome(username, cookies, listener);
     }
 
-    // ★★★ listener引数を追加 ★★★
+    // ★★★ このメソッドを修正 ★★★
     private InternalSyncOutcome loginAndScrape(String username, String password, LoginProgressListener listener) throws IOException {
         WebDriverManager.chromedriver().setup();
         ChromeOptions options = new ChromeOptions();
+        // ★★★ Chromeバイナリのパスを指定する行を追加 ★★★
+        options.setBinary("/usr/bin/google-chrome-stable");
         options.addArguments("--headless", "--disable-gpu", "--window-size=1920,1080", "--no-sandbox", "--disable-dev-shm-usage");
         WebDriver driver = null; // finallyで閉じるために外で宣言
         Map<String, String> freshCookies = Collections.emptyMap(); // 初期化
 
         try {
-            driver = new ChromeDriver(options);
-            performLogin(driver, username, password, listener); // ★ listenerを渡す
+            log.info("ChromeDriverをオプション付きで初期化します..."); // ログ追加
+            driver = new ChromeDriver(options); // 修正したoptionsを使う
+            log.info("ChromeDriverの初期化完了。"); // ログ追加
+            performLogin(driver, username, password, listener);
             listener.onStatusUpdate("FETCH_COOKIE_PAGE", "ログイン後のCookie取得ページにアクセス中...");
             driver.get(HOME_COURSE_URL); // Cookieを取得するためにホーム画面にアクセス
             freshCookies = extractCookies(driver);
@@ -135,17 +137,18 @@ public class ManabaScrapingOrchestrator {
             throw new IOException("manabaへのログインに失敗しました: " + e.getMessage(), e);
         } finally {
             if (driver != null) {
+                log.info("WebDriverを終了します..."); // ログ追加
                 driver.quit();
+                log.info("WebDriverを終了しました。"); // ログ追加
             }
         }
 
         if (freshCookies.isEmpty()) {
             throw new IOException("ログイン後のCookie取得に失敗しました。");
         }
-        return buildInternalSyncOutcome(username, freshCookies, listener); // ★ listenerを渡す
+        return buildInternalSyncOutcome(username, freshCookies, listener);
     }
 
-    // ★★★ listener引数を追加 ★★★
     private InternalSyncOutcome buildInternalSyncOutcome(String username, Map<String, String> cookies, LoginProgressListener listener) throws IOException {
         listener.onStatusUpdate("SCRAPE_START", "データのスクレイピングを開始します...");
         var rawCourses = scrapingService.parseTimetableToList(cookies);
@@ -156,14 +159,13 @@ public class ManabaScrapingOrchestrator {
         List<CourseEntry> timetable = convertCourses(rawCourses);
         List<AssignmentEntry> assignments = convertAssignments(rawAssignments);
         NextClassCard nextClass = calculateNextClass(timetable);
-        String syncedAt = LocalDateTime.now(JAPAN_ZONE).format(ISO_FORMATTER); // 正しいフォーマッタを使用
+        String syncedAt = LocalDateTime.now(JAPAN_ZONE).format(ISO_FORMATTER);
         listener.onStatusUpdate("DATA_PROCESSING_COMPLETE", "データ整形完了。");
 
         SyncResult syncResultDto = new SyncResult(username, syncedAt, timetable, assignments, nextClass);
         return new InternalSyncOutcome(syncResultDto, cookies);
     }
 
-    // ★★★ listener引数を追加 ★★★
     private void performLogin(WebDriver driver, String username, String password, LoginProgressListener listener) {
         WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(120)); // 必要に応じてタイムアウト調整
         listener.onStatusUpdate("ACCESS_LOGIN_PAGE", "ログインページにアクセス中...");
@@ -180,15 +182,14 @@ public class ManabaScrapingOrchestrator {
         wait.until(ExpectedConditions.elementToBeClickable(By.id("idSIButton9"))).click();
         listener.onStatusUpdate("PASSWORD_SUBMITTED", "パスワードを送信しました。");
 
-        detectMfaPrompt(driver, listener); // ★ listenerを渡す
-        handleStaySignedInPrompt(driver, listener); // ★ listenerを渡す
+        detectMfaPrompt(driver, listener);
+        handleStaySignedInPrompt(driver, listener);
 
         listener.onStatusUpdate("WAITING_HOME", "ホーム画面への遷移を待機中...");
         wait.until(ExpectedConditions.urlContains("/ct/home"));
         listener.onStatusUpdate("LOGIN_SUCCESS", "ログイン成功を確認しました。");
     }
 
-    // ★★★ listener引数を追加し、通知を有効化 ★★★
     private void detectMfaPrompt(WebDriver driver, LoginProgressListener listener) {
         WebDriverWait shortWait = new WebDriverWait(driver, Duration.ofSeconds(30)); // 少し長めに待つ
         try {
@@ -198,23 +199,19 @@ public class ManabaScrapingOrchestrator {
             if (displayCode != null && !displayCode.isBlank()) {
                 String normalized = displayCode.trim();
                 log.info("MFAコードを検出: {}", normalized);
-                // ★ 通知を有効化 ★
                 listener.onMfaRequired(normalized, "認証アプリで承認が必要です [" + normalized + "]");
-                // ステータス更新は onMfaRequired 内で行われる想定なのでここでは不要かも
-                // listener.onStatusUpdate("MFA_REQUIRED", "Authenticator アプリでの承認待ちです...");
             } else {
-                 log.info("MFAコード要素は見つかったが、コードが空でした。");
+                log.info("MFAコード要素は見つかったが、コードが空でした。");
             }
         } catch (TimeoutException ignored) {
             log.info("MFAプロンプトは表示されませんでした。");
             // MFA が要求されない場合は何もしない
         } catch (Exception e) {
-             log.error("MFAプロンプト検出中に予期せぬエラーが発生しました。", e);
-             // エラーが発生してもログイン処理自体は続行を試みる
+            log.error("MFAプロンプト検出中に予期せぬエラーが発生しました。", e);
+            // エラーが発生してもログイン処理自体は続行を試みる
         }
     }
 
-    // ★★★ listener引数を追加 ★★★
     private void handleStaySignedInPrompt(WebDriver driver, LoginProgressListener listener) {
         WebDriverWait kmsiWait = new WebDriverWait(driver, Duration.ofSeconds(60));
         try {
@@ -234,190 +231,197 @@ public class ManabaScrapingOrchestrator {
                 } catch (org.openqa.selenium.NoSuchElementException ignored) { // ★ 完全修飾名で指定
                     // 要素が見つからない場合、まだ表示されていないか、表示されないパターン
                     if (d.getCurrentUrl().contains("/ct/home")) {
-                         log.info("すでにホーム画面に遷移済みのため、KMSI確認はスキップします。");
-                         return true; // すでにホーム画面なら待機終了
+                        log.info("すでにホーム画面に遷移済みのため、KMSI確認はスキップします。");
+                        return true; // すでにホーム画面なら待機終了
                     }
                     return false; // まだ待機
                 } catch (Exception e) {
                     log.warn("KMSIプロンプトの処理中にエラーが発生しましたが、続行します。", e);
                     return true; // 不明なエラーでも先に進む
                 }
-                 return false; // まだ待機
+                return false; // まだ待機
             });
         } catch (TimeoutException ignored) {
             log.info("「サインイン状態の維持」プロンプトは表示されませんでした。");
             // タイムアウト = プロンプトが表示されないか、ホーム画面に遷移済み
         } catch (Exception e) {
-             log.error("KMSIプロンプト処理中に予期せぬエラーが発生しました。", e);
+            log.error("KMSIプロンプト処理中に予期せぬエラーが発生しました。", e);
         }
     }
 
     // --- 他のヘルパーメソッド (shouldClickStaySignedIn, containsAffirmative, extractTextSafely, extractCookies, isLoginPage, convertCourses, convertAssignments, normalizeDeadline, calculateNextClass, nextOccurrence, parseTime, extractDigits, formatIsoDuration) は変更なし ---
-    // (省略せずに全て含めてください)
-     private boolean shouldClickStaySignedIn(WebElement button) {
-         if (button == null) return false;
-         String text = button.getText();
-         String value = button.getAttribute("value");
-         return containsAffirmative(text) || containsAffirmative(value);
-     }
- 
-     private boolean containsAffirmative(String value) {
-         if (value == null) return false;
-         String normalized = value.toLowerCase(Locale.ROOT);
-         return normalized.contains("はい") || normalized.contains("yes") || normalized.contains("続行");
-     }
-     
-     private String extractTextSafely(WebDriver driver, By locator) {
-         try {
-             return driver.findElement(locator).getText();
-         } catch (org.openqa.selenium.NoSuchElementException ignored) { // ★ 完全修飾名
-             return null;
-         }
-     }
-     
-     private Map<String, String> extractCookies(WebDriver driver) {
-         Map<String, String> cookies = new HashMap<>();
-         try {
+    private boolean shouldClickStaySignedIn(WebElement button) {
+        if (button == null) return false;
+        String text = button.getText();
+        String value = button.getAttribute("value");
+        return containsAffirmative(text) || containsAffirmative(value);
+    }
+
+    private boolean containsAffirmative(String value) {
+        if (value == null) return false;
+        String normalized = value.toLowerCase(Locale.ROOT);
+        return normalized.contains("はい") || normalized.contains("yes") || normalized.contains("続行");
+    }
+
+    private String extractTextSafely(WebDriver driver, By locator) {
+        try {
+            return driver.findElement(locator).getText();
+        } catch (org.openqa.selenium.NoSuchElementException ignored) { // ★ 完全修飾名
+            return null;
+        }
+    }
+
+    private Map<String, String> extractCookies(WebDriver driver) {
+        Map<String, String> cookies = new HashMap<>();
+        try {
             driver.manage().getCookies().forEach(cookie -> cookies.put(cookie.getName(), cookie.getValue()));
-         } catch (Exception e) {
+        } catch (Exception e) {
             log.error("Cookieの抽出中にエラーが発生しました。", e);
-         }
-         return cookies;
-     }
- 
-     private boolean isLoginPage(Document document) {
-         if (document == null) return true;
-         String title = document.title();
-         if (title != null) {
-             String lower = title.toLowerCase(Locale.ROOT);
-             if (lower.contains("sign in") || lower.contains("login") || title.contains("サインイン")) {
-                 return true;
-             }
-         }
-         return document.selectFirst("form[action*='login']") != null;
-     }
- 
-     private List<CourseEntry> convertCourses(List<com.example.demo.dto.Course> rawCourses) {
-         List<CourseEntry> entries = new ArrayList<>();
-         for (var course : rawCourses) {
-             String periodKey = extractDigits(course.period());
-             PeriodTime period = PERIOD_TIME_TABLE.get(periodKey);
-             String start = (period != null) ? period.start() : null;
-             String end = (period != null) ? period.end() : null;
-             entries.add(new CourseEntry(
-                     "course-" + UUID.randomUUID().toString().replaceAll("-", ""),
-                     course.day(), course.period(), course.name(), course.location(),
-                     start, end, "AUTO"
-             ));
-         }
-         return entries;
-     }
- 
-     private List<AssignmentEntry> convertAssignments(List<com.example.demo.dto.Assignment> assignments) {
-         List<AssignmentEntry> converted = new ArrayList<>();
-         for (var assignment : assignments) {
-             converted.add(new AssignmentEntry(
-                     "assignment-" + UUID.randomUUID().toString().replaceAll("-", ""),
-                     assignment.courseName(), assignment.category(), assignment.title(),
-                     normalizeDeadline(assignment.deadline()), assignment.url()
-             ));
-         }
-         return converted;
-     }
- 
-     private String normalizeDeadline(String deadline) {
-         if (deadline == null) return null;
-         String cleaned = deadline.replace('\u3000', ' ').replace("締切", "").replace("まで", "").trim();
-         if (cleaned.isEmpty()) return null;
-         for (DateTimeFormatter formatter : DEADLINE_PATTERNS) {
-             try {
-                 LocalDateTime parsed = LocalDateTime.parse(cleaned, formatter);
-                 return parsed.format(ISO_FORMATTER);
-             } catch (DateTimeParseException ignored) {
-             }
-         }
-         log.warn("不明な日付フォーマットのため正規化できませんでした: {}", deadline);
-         return cleaned; // 解析できなかった場合は元の文字列(クリーニング後)を返す
-     }
- 
-     private NextClassCard calculateNextClass(List<CourseEntry> timetable) {
-         if (timetable == null || timetable.isEmpty()) return null;
-         LocalDateTime now = LocalDateTime.now(JAPAN_ZONE);
-         NextClassCard bestCard = null;
-         Duration bestDuration = null;
- 
-         for (CourseEntry course : timetable) {
-             DayOfWeek targetDay = DAY_OF_WEEK_MAP.get(course.day());
-             if (targetDay == null) continue;
- 
-             LocalTime startTime = parseTime(course.startTime());
-             if (startTime == null) continue;
- 
-             LocalDateTime startDateTime = nextOccurrence(now, targetDay, startTime);
-             Duration untilStart = Duration.between(now, startDateTime);
-             if (untilStart.isNegative()) continue;
-             
-             if (bestDuration == null || untilStart.compareTo(bestDuration) < 0) {
-                 bestDuration = untilStart;
-                 LocalTime endTime = parseTime(course.endTime());
-                 if (endTime == null) endTime = startTime.plusMinutes(90); // デフォルト90分授業と仮定
-                 LocalDateTime endDateTime = LocalDateTime.of(startDateTime.toLocalDate(), endTime);
- 
-                 bestCard = new NextClassCard(
-                         course.name(), course.day(), course.period(), course.location(),
-                         startDateTime.format(ISO_FORMATTER),
-                         endDateTime.format(ISO_FORMATTER),
-                         formatIsoDuration(untilStart)
-                 );
-             }
-         }
-         return bestCard;
-     }
-     
-     private LocalDateTime nextOccurrence(LocalDateTime base, DayOfWeek targetDay, LocalTime startTime) {
-         int diff = (targetDay.getValue() - base.getDayOfWeek().getValue() + 7) % 7;
-         LocalDate targetDate = base.toLocalDate().plusDays(diff);
-         LocalDateTime candidate = LocalDateTime.of(targetDate, startTime);
-         // 同じ日の授業で、すでに開始時刻を過ぎている場合は来週にする
-         return (diff == 0 && candidate.isBefore(base)) ? candidate.plusWeeks(1) : candidate;
-     }
- 
-     private LocalTime parseTime(String value) {
-         if (value == null || value.isBlank()) return null;
-         try {
-             return LocalTime.parse(value); // HH:mm 形式を想定
-         } catch (DateTimeParseException ignored) {
-             log.warn("不正な時刻フォーマットです: {}", value);
-             return null;
-         }
-     }
- 
-     private String extractDigits(String value) {
-         if (value == null) return null;
-         String digits = value.replaceAll("[^0-9]", "");
-         return digits.isEmpty() ? value : digits; // 数字がなければ元の値を返す
-     }
- 
-     private String formatIsoDuration(Duration duration) {
-         if (duration == null || duration.isNegative()) return "PT0M"; // 負の期間は0分とする
-         long days = duration.toDays();
-         duration = duration.minusDays(days);
-         long hours = duration.toHours();
-         duration = duration.minusHours(hours);
-         long minutes = duration.toMinutes();
-         
-         StringBuilder builder = new StringBuilder("P");
-         if (days > 0) builder.append(days).append('D');
-         if (hours > 0 || minutes > 0 || builder.length() == 1) { // 時間か分があるか、PしかなければTを追加
-             builder.append('T');
-             if (hours > 0) builder.append(hours).append('H');
-             if (minutes > 0) builder.append(minutes).append('M');
-         }
-         // もし PT のままなら、 PT0M にする
-         if (builder.toString().equals("PT")) return "PT0M"; 
-         // もし P のままなら（0日の場合）、PT0M にする
-         if (builder.toString().equals("P")) return "PT0M"; 
-         
-         return builder.toString();
-     }
+        }
+        return cookies;
+    }
+
+    private boolean isLoginPage(Document document) {
+        if (document == null) return true;
+        String title = document.title();
+        if (title != null) {
+            String lower = title.toLowerCase(Locale.ROOT);
+            if (lower.contains("sign in") || lower.contains("login") || title.contains("サインイン")) {
+                return true;
+            }
+        }
+        return document.selectFirst("form[action*='login']") != null;
+    }
+
+    private List<CourseEntry> convertCourses(List<com.example.demo.dto.Course> rawCourses) {
+        List<CourseEntry> entries = new ArrayList<>();
+        if (rawCourses == null) return entries; // Nullチェック追加
+        for (var course : rawCourses) {
+            String periodKey = extractDigits(course.period());
+            PeriodTime period = PERIOD_TIME_TABLE.get(periodKey);
+            String start = (period != null) ? period.start() : null;
+            String end = (period != null) ? period.end() : null;
+            entries.add(new CourseEntry(
+                    "course-" + UUID.randomUUID().toString().replaceAll("-", ""),
+                    course.day(), course.period(), course.name(), course.location(),
+                    start, end, "AUTO"
+            ));
+        }
+        return entries;
+    }
+
+    private List<AssignmentEntry> convertAssignments(List<com.example.demo.dto.Assignment> assignments) {
+        List<AssignmentEntry> converted = new ArrayList<>();
+        if (assignments == null) return converted; // Nullチェック追加
+        for (var assignment : assignments) {
+            converted.add(new AssignmentEntry(
+                    "assignment-" + UUID.randomUUID().toString().replaceAll("-", ""),
+                    assignment.courseName(), assignment.category(), assignment.title(),
+                    normalizeDeadline(assignment.deadline()), assignment.url()
+            ));
+        }
+        return converted;
+    }
+
+    private String normalizeDeadline(String deadline) {
+        if (deadline == null) return null;
+        String cleaned = deadline.replace('\u3000', ' ').replace("締切", "").replace("まで", "").trim();
+        if (cleaned.isEmpty()) return null;
+        for (DateTimeFormatter formatter : DEADLINE_PATTERNS) {
+            try {
+                LocalDateTime parsed = LocalDateTime.parse(cleaned, formatter);
+                return parsed.format(ISO_FORMATTER);
+            } catch (DateTimeParseException ignored) {
+            }
+        }
+        log.warn("不明な日付フォーマットのため正規化できませんでした: {}", deadline);
+        return cleaned; // 解析できなかった場合は元の文字列(クリーニング後)を返す
+    }
+
+    private NextClassCard calculateNextClass(List<CourseEntry> timetable) {
+        if (timetable == null || timetable.isEmpty()) return null;
+        LocalDateTime now = LocalDateTime.now(JAPAN_ZONE);
+        NextClassCard bestCard = null;
+        Duration bestDuration = null;
+
+        for (CourseEntry course : timetable) {
+            DayOfWeek targetDay = DAY_OF_WEEK_MAP.get(course.day());
+            if (targetDay == null) continue;
+
+            LocalTime startTime = parseTime(course.startTime());
+            if (startTime == null) continue;
+
+            LocalDateTime startDateTime = nextOccurrence(now, targetDay, startTime);
+            Duration untilStart = Duration.between(now, startDateTime);
+            if (untilStart.isNegative()) continue;
+
+            if (bestDuration == null || untilStart.compareTo(bestDuration) < 0) {
+                bestDuration = untilStart;
+                LocalTime endTime = parseTime(course.endTime());
+                if (endTime == null) endTime = startTime.plusMinutes(90); // デフォルト90分授業と仮定
+                LocalDateTime endDateTime = LocalDateTime.of(startDateTime.toLocalDate(), endTime);
+
+                bestCard = new NextClassCard(
+                        course.name(), course.day(), course.period(), course.location(),
+                        startDateTime.format(ISO_FORMATTER),
+                        endDateTime.format(ISO_FORMATTER),
+                        formatIsoDuration(untilStart)
+                );
+            }
+        }
+        return bestCard;
+    }
+
+    private LocalDateTime nextOccurrence(LocalDateTime base, DayOfWeek targetDay, LocalTime startTime) {
+        int diff = (targetDay.getValue() - base.getDayOfWeek().getValue() + 7) % 7;
+        LocalDate targetDate = base.toLocalDate().plusDays(diff);
+        LocalDateTime candidate = LocalDateTime.of(targetDate, startTime);
+        // 同じ日の授業で、すでに開始時刻を過ぎている場合は来週にする
+        return (diff == 0 && candidate.isBefore(base)) ? candidate.plusWeeks(1) : candidate;
+    }
+
+    private LocalTime parseTime(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return LocalTime.parse(value); // HH:mm 形式を想定
+        } catch (DateTimeParseException ignored) {
+            log.warn("不正な時刻フォーマットです: {}", value);
+            return null;
+        }
+    }
+
+    private String extractDigits(String value) {
+        if (value == null) return null;
+        String digits = value.replaceAll("[^0-9]", "");
+        return digits.isEmpty() ? value : digits; // 数字がなければ元の値を返す
+    }
+
+    private String formatIsoDuration(Duration duration) {
+        if (duration == null || duration.isNegative()) return "PT0M"; // 負の期間は0分とする
+        long days = duration.toDays();
+        duration = duration.minusDays(days);
+        long hours = duration.toHours();
+        duration = duration.minusHours(hours);
+        long minutes = duration.toMinutes();
+
+        StringBuilder builder = new StringBuilder("P");
+        if (days > 0) builder.append(days).append('D');
+        if (hours > 0 || minutes > 0 || builder.length() == 1) { // 時間か分があるか、PしかなければTを追加
+            builder.append('T');
+            if (hours > 0) builder.append(hours).append('H');
+            if (minutes > 0) builder.append(minutes).append('M');
+        }
+        // もし PT のままなら、 PT0M にする
+        if (builder.toString().equals("PT")) return "PT0M";
+        // もし P のままなら（0日の場合）、PT0M にする
+        if (builder.toString().equals("P")) return "PT0M";
+
+        return builder.toString();
+    }
+
+    // --- LoginProgressListener インターフェース定義 ---
+    public interface LoginProgressListener {
+        void onStatusUpdate(String status, String message);
+        void onMfaRequired(String mfaCode, String message);
+    }
 }

@@ -1,8 +1,10 @@
 package com.example.demo.service;
 
 import com.example.demo.dto.SyncResult;
-import org.slf4j.Logger; // Loggerを追加
-import org.slf4j.LoggerFactory; // Loggerを追加
+// ★★★ ManabaScrapingOrchestrator の LoginProgressListener をインポート ★★★
+import com.example.demo.service.ManabaScrapingOrchestrator.LoginProgressListener;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -23,12 +25,13 @@ import java.util.Iterator;
 public class JobManagerService {
 
     private static final Logger log = LoggerFactory.getLogger(JobManagerService.class);
-    private static final Duration JOB_TTL = Duration.ofMinutes(10);
-    private final ExecutorService executor = Executors.newFixedThreadPool(5);
+    private static final Duration JOB_TTL = Duration.ofMinutes(10); // 10分間ジョブを保持
+    private final ExecutorService executor = Executors.newFixedThreadPool(5); // 5つのスレッドで並列処理
     private final ConcurrentHashMap<String, LoginJob> jobs = new ConcurrentHashMap<>();
 
     private final AuthService authService;
 
+    // AuthServiceをDI (Dependency Injection) する
     public JobManagerService(AuthService authService) {
         this.authService = authService;
     }
@@ -40,16 +43,15 @@ public class JobManagerService {
      * @param rememberMe パスワードを保存するかどうか
      * @return 開始されたジョブのインスタンス
      */
-    // ★ rememberMe引数を追加
     public LoginJob startNewSyncJob(String username, String password, boolean rememberMe) {
-        cleanupExpiredJobs();
+        cleanupExpiredJobs(); // 古いジョブを削除
         String jobId = UUID.randomUUID().toString();
         LoginJob job = new LoginJob(jobId, username, rememberMe);
-        jobs.put(jobId, job);
-    log.debug("新しい同期ジョブを開始しました: jobId={}", jobId);
+        jobs.put(jobId, job); // 新しいジョブを登録
+        log.debug("新しい同期ジョブを開始しました: jobId={}", jobId);
 
         // executorを使って、重たい処理をバックグラウンドで実行
-        executor.submit(() -> executeSyncJob(job, username, password));
+        executor.submit(() -> executeSyncJob(job, username, password)); // ★ rememberMeはjobオブジェクトから取得するので引数不要
 
         return job;
     }
@@ -65,7 +67,7 @@ public class JobManagerService {
         }
         LoginJob job = jobs.get(jobId);
         if (job == null) {
-             log.warn("指定されたジョブIDが見つかりません: {}", jobId);
+            log.warn("指定されたジョブIDが見つかりません: {}", jobId);
         }
         return job;
     }
@@ -74,12 +76,12 @@ public class JobManagerService {
      * バックグラウンドで同期処理を実行する本体。
      * LoginProgressListenerを実装し、AuthService経由でOrchestratorに渡す。
      */
-    // ★ rememberMe引数を追加
     private void executeSyncJob(LoginJob job, String username, String password) {
         job.updateStage("QUEUED", "ログインキューに登録しました");
-    log.debug("ジョブ実行開始: jobId={}", job.getId());
+        log.debug("ジョブ実行開始: jobId={}", job.getId());
 
-        // ★ LoginProgressListenerの実装を作成 ★
+        // ★★★ 正しい型 (ManabaScrapingOrchestrator.LoginProgressListener) を使う ★★★
+        // (importしているので、クラス名を省略して new LoginProgressListener() と書ける)
         LoginProgressListener listener = new LoginProgressListener() {
             @Override
             public void onStatusUpdate(String stage, String message) {
@@ -95,10 +97,11 @@ public class JobManagerService {
 
         try {
             job.updateStatus("IN_PROGRESS", "manabaに接続しています...");
-            
-            // ★ AuthService経由で同期処理を実行し、リスナーを渡す ★
-            SyncResult result = authService.executeSync(username, password, job.isRememberMe(), listener); 
-            
+
+            // ★ AuthService経由で同期処理を実行し、正しい型のリスナーを渡す ★
+            // ★ job.isRememberMe() で rememberMe フラグを取得する ★
+            SyncResult result = authService.executeSync(username, password, job.isRememberMe(), listener);
+
             job.complete(result, "manabaからの情報取得が完了しました。");
             log.debug("ジョブ実行成功: jobId={}", job.getId());
 
@@ -109,14 +112,14 @@ public class JobManagerService {
             if (e.getCause() != null) {
                 errorMessage = "エラーが発生しました: " + e.getCause().getMessage();
             } else if (e.getMessage() != null) {
-                 // 特定のエラーメッセージに対するハンドリングを追加可能
-                 if (e.getMessage().contains("Cookieの有効期限が切れています")) {
-                      errorMessage = "セッションの有効期限が切れました。再度ログインしてください。";
-                 } else if (e.getMessage().contains("ログインに失敗しました")) {
-                      errorMessage = "大学IDまたはパスワードが間違っている可能性があります。";
-                 } else {
-                      errorMessage = "エラーが発生しました: " + e.getMessage();
-                 }
+                // 特定のエラーメッセージに対するハンドリングを追加可能
+                if (e.getMessage().contains("Cookieの有効期限が切れています")) {
+                    errorMessage = "セッションの有効期限が切れました。再度ログインしてください。";
+                } else if (e.getMessage().contains("ログインに失敗しました")) {
+                    errorMessage = "大学IDまたはパスワードが間違っている可能性があります。";
+                } else {
+                    errorMessage = "エラーが発生しました: " + e.getMessage();
+                }
             }
             job.fail("FAILED", errorMessage);
         }
@@ -172,7 +175,7 @@ public class JobManagerService {
         // --- Getters ---
         public String getId() { return id; }
         public String getUsername() { return username; } // usernameのGetterを追加
-    public boolean isRememberMe() { return rememberMe; }
+        public boolean isRememberMe() { return rememberMe; }
         public String getStatus() { return status; }
         public String getStage() { return stage; }
         public String getMessage() { return message; }
@@ -205,11 +208,11 @@ public class JobManagerService {
             if (newMessage != null && !newMessage.isBlank()) {
                 this.message = newMessage;
             }
-             // MFA関連のメッセージがクリアされるように調整
-             if (!"MFA_REQUIRED".equals(stage)) {
-                 this.mfaCode = null;
-                 this.mfaMessage = null;
-             }
+            // MFA関連のメッセージがクリアされるように調整
+            if (!"MFA_REQUIRED".equals(stage)) {
+                this.mfaCode = null;
+                this.mfaMessage = null;
+            }
             this.updatedAt = Instant.now();
         }
 
