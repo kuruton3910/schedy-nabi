@@ -20,7 +20,7 @@ COPY src ./src
 RUN ./mvnw package -DskipTests
 
 
-# ----- 2. 実行用ステージ -----
+# ----- 2. 実行用ステージ ----
 FROM eclipse-temurin:17-jre
 WORKDIR /app
 
