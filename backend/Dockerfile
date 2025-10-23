@@ -20,30 +20,73 @@ COPY src ./src
 RUN ./mvnw package -DskipTests
 
 
-# ----- 2. 実行用ステージ ----
+# ----- 2. 実行用ステージ -----
 FROM eclipse-temurin:17-jre
 WORKDIR /app
 
-# (Chromeインストール部分はそのまま)
-# 必要なライブラリとwgetをインストール
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    wget \
+# ★★★ Chromeインストール部分を修正 ★★★
+# より多くの依存関係を含めてインストール
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    apt-transport-https \
+    ca-certificates \
+    curl \
     gnupg \
-    # ... (長いリストは省略) ...
-    xdg-utils
-# Google Chromeの公式リポジトリキーを追加
-RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add -
-# Google Chromeのリポジトリを追加
-RUN sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
-# Google Chrome (stable) をインストール
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    google-chrome-stable
-# 不要なファイルを削除してイメージサイズを削減
-RUN apt-get purge -y --auto-remove wget gnupg && \
+    # --- Chrome Core Dependencies ---
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libc6 \
+    libcairo2 \
+    libcups2 \
+    libdbus-1-3 \
+    libexpat1 \
+    libfontconfig1 \
+    libgbm1 \
+    libgcc1 \
+    libglib2.0-0 \
+    libgtk-3-0 \
+    libnspr4 \
+    libnss3 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libstdc++6 \
+    libx11-6 \
+    libx11-xcb1 \
+    libxcb1 \
+    libxcomposite1 \
+    libxcursor1 \
+    libxdamage1 \
+    libxext6 \
+    libxfixes3 \
+    libxi6 \
+    libxrandr2 \
+    libxrender1 \
+    libxss1 \
+    libxtst6 \
+    # --- Other Recommended Dependencies ---
+    fonts-liberation \
+    libappindicator3-1 \
+    libdrm2 \
+    libgbm1 \
+    libu2f-udev \
+    lsb-release \
+    udev \
+    wget \
+    xdg-utils && \
+    # Google Chromeの公式リポジトリキーを追加
+    curl -fsSL https://dl-ssl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/google-chrome-keyring.gpg && \
+    # Google Chromeのリポジトリを追加
+    sh -c 'echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list' && \
+    # Google Chrome (stable) をインストール
+    apt-get update && \
+    apt-get install -y --no-install-recommends google-chrome-stable && \
+    # ★★★ インストール確認 ★★★
+    google-chrome-stable --version && \
+    # 不要なファイルを削除
+    apt-get purge -y --auto-remove curl gnupg wget && \
     rm -rf /var/lib/apt/lists/*
 
-# ビルドステージから生成されたJARファイルのみをコピー
 COPY --from=build /app/target/*.jar /app.jar
-
 EXPOSE 8080
 ENTRYPOINT ["java","-jar","/app.jar"]
