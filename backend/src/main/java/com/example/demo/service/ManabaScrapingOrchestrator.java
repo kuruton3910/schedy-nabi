@@ -118,7 +118,7 @@ public class ManabaScrapingOrchestrator {
         WebDriverManager.chromedriver().setup();
         ChromeOptions options = new ChromeOptions();
         // ★★★ Chromeバイナリのパスを指定する行を追加 ★★★
-       options.setBinary("/opt/google/chrome/chrome");
+        options.setBinary("/opt/google/chrome/chrome");
         options.addArguments("--headless", "--disable-gpu", "--window-size=1920,1080", "--no-sandbox", "--disable-dev-shm-usage");
         WebDriver driver = null; // finallyで閉じるために外で宣言
         Map<String, String> freshCookies = Collections.emptyMap(); // 初期化
