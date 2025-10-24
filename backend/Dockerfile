@@ -79,7 +79,6 @@ RUN apt-get update && \
     apt-get update && \
     apt-get install -y --no-install-recommends google-chrome-stable && \
     google-chrome-stable --version && \
-    apt-get purge -y --auto-remove curl gnupg wget && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app/target/*.jar /app.jar
