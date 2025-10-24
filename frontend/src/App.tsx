@@ -48,10 +48,10 @@ function App() {
           `保存されたID (${storedUserId}) で自動同期を試みています...`
         );
         try {
-          // ★ パスワード空、rememberMe: false で sync を呼び出す
+          // ★ rememberMe を true に修正 ★
           const response = await sync(
-            { username: storedUserId, password: "", rememberMe: false },
-            (progress) => setLoginProgress(progress) // 進捗も表示
+            { username: storedUserId, password: "", rememberMe: true }, // ← ここを true に変更！
+            (progress) => setLoginProgress(progress)
           );
           setSession(response);
           showSuccess("自動同期に成功しました。");
