@@ -25,7 +25,6 @@ FROM eclipse-temurin:17-jre
 WORKDIR /app
 
 # ★★★ Chromeインストール部分を修正 ★★★
-# より多くの依存関係を含めてインストール
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     apt-transport-https \
@@ -33,7 +32,7 @@ RUN apt-get update && \
     curl \
     gnupg \
     # --- Chrome Core Dependencies ---
-    libasound2 \
+    libasound2t64 \ 
     libatk-bridge2.0-0 \
     libatk1.0-0 \
     libc6 \
@@ -68,22 +67,18 @@ RUN apt-get update && \
     fonts-liberation \
     libappindicator3-1 \
     libdrm2 \
-    libgbm1 \
+    # libgbm1 \ <-- 重複しているので削除してもOK
     libu2f-udev \
     lsb-release \
     udev \
     wget \
     xdg-utils && \
-    # Google Chromeの公式リポジトリキーを追加
+    # (以降のChromeリポジトリ追加、インストール、確認コマンドは変更なし)
     curl -fsSL https://dl-ssl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/google-chrome-keyring.gpg && \
-    # Google Chromeのリポジトリを追加
     sh -c 'echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list' && \
-    # Google Chrome (stable) をインストール
     apt-get update && \
     apt-get install -y --no-install-recommends google-chrome-stable && \
-    # ★★★ インストール確認 ★★★
     google-chrome-stable --version && \
-    # 不要なファイルを削除
     apt-get purge -y --auto-remove curl gnupg wget && \
     rm -rf /var/lib/apt/lists/*
 
