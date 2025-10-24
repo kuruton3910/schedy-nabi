@@ -34,16 +34,25 @@ public class SyncController {
      * リクエストを受け取ったら、すぐにJob IDを返します。
      * POST http://localhost:8080/api/sync/start
      */
-    @PostMapping("/start")
+   @PostMapping("/start")
     public ResponseEntity<Map<String, String>> startSync(@RequestBody SyncRequest request) {
         if (request.username == null || request.username.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "usernameは必須です。"));
         }
-        boolean rememberMe = Boolean.TRUE.equals(request.rememberMe());
-        if (!rememberMe && (request.password == null || request.password.isBlank())) {
-            return ResponseEntity.badRequest().body(Map.of("error", "passwordは必須です。"));
+
+        // rememberMe が null または false の場合にのみパスワードを必須とする
+        // rememberMe が true の場合は Cookie 認証を試みるのでパスワードは任意
+        boolean isRememberMeFalse = Boolean.FALSE.equals(request.rememberMe()); // 明示的に false かどうか
+        if (isRememberMeFalse && (request.password == null || request.password.isBlank())) {
+             return ResponseEntity.badRequest().body(Map.of("error", "ログイン状態を記録しない場合はパスワードは必須です。"));
         }
-        LoginJob job = jobManagerService.startNewSyncJob(request.username(), request.password(), rememberMe);
+
+        // rememberMe が null の場合も true として扱う (自動ログイン試行など)
+        boolean rememberMeFlag = !isRememberMeFalse; // false でない場合は true とする
+
+        // JobManagerService に渡す password は null でもOKとする
+        LoginJob job = jobManagerService.startNewSyncJob(request.username(), request.password(), rememberMeFlag);
+
         // ステータス202 ACCEPTED（受理された）で、Job IDを返す
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of("jobId", job.getId()));
     }

@@ -26,7 +26,7 @@ public class JobManagerService {
 
     private static final Logger log = LoggerFactory.getLogger(JobManagerService.class);
     private static final Duration JOB_TTL = Duration.ofMinutes(10); // 10分間ジョブを保持
-    private final ExecutorService executor = Executors.newFixedThreadPool(3); // 5つのスレッドで並列処理
+    private final ExecutorService executor = Executors.newFixedThreadPool(4); // 5つのスレッドで並列処理
     private final ConcurrentHashMap<String, LoginJob> jobs = new ConcurrentHashMap<>();
 
     private final AuthService authService;
