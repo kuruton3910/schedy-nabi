@@ -15,6 +15,8 @@ const LoginForm = ({ loading, error, onSubmit }: LoginFormProps) => {
     rememberMe: true,
   });
 
+  const DOMAIN = "@ed.ritsumei.ac.jp";
+
   const handleChange = (field: keyof LoginPayload, value: string | boolean) => {
     setForm((prev) => ({
       ...prev,
@@ -51,16 +53,57 @@ const LoginForm = ({ loading, error, onSubmit }: LoginFormProps) => {
       <form onSubmit={handleSubmit}>
         <div className="form-field">
           <label htmlFor="username">大学メールアドレス</label>
-          <input
-            id="username"
-            type="email"
-            inputMode="email"
-            autoComplete="email"
-            required
-            placeholder="user@ed.ritsumei.ac.jp"
-            value={form.username}
-            onChange={(event) => handleChange("username", event.target.value)}
-          />
+          {/* ローカル部分を入力し、ドメインは固定表示するUI */}
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+            <input
+              id="username"
+              type="text"
+              inputMode="email"
+              autoComplete="username"
+              required
+              placeholder="例: ab123"
+              style={{ flex: 1 }}
+              value={
+                // 表示はローカル部分のみ。form.username が DOMAIN 付きなら切り出す
+                form.username && form.username.endsWith(DOMAIN)
+                  ? form.username.slice(0, -DOMAIN.length)
+                  : form.username
+              }
+              onChange={(event) => {
+                const v = event.target.value;
+                if (v.trim() === "") {
+                  handleChange("username", "");
+                } else if (v.includes("@")) {
+                  // ユーザーがフルアドレスを入力した場合はそれをそのまま使う
+                  handleChange("username", v);
+                } else {
+                  handleChange("username", v + DOMAIN);
+                }
+              }}
+            />
+            <span
+              aria-hidden
+              style={{
+                padding: "0.55rem 0.75rem",
+                background: "var(--primary-light)",
+                borderRadius: "0.5rem",
+                border: "1px solid rgba(77,208,225,0.15)",
+                color: "var(--text-muted)",
+                fontSize: "0.95rem",
+              }}
+            >
+              {DOMAIN}
+            </span>
+          </div>
+          <div
+            style={{
+              marginTop: "0.35rem",
+              color: "var(--text-muted)",
+              fontSize: "0.85rem",
+            }}
+          >
+            （ローカル部分を入力してください。ドメインは固定：{DOMAIN}）
+          </div>
         </div>
         <div className="form-field">
           <label htmlFor="password">パスワード</label>
