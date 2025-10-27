@@ -166,35 +166,76 @@ public class ManabaScrapingOrchestrator {
         return new InternalSyncOutcome(syncResultDto, cookies);
     }
 
-    private void performLogin(WebDriver driver, String username, String password, LoginProgressListener listener) {
-        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(120)); // 必要に応じてタイムアウト調整
-        listener.onStatusUpdate("ACCESS_LOGIN_PAGE", "ログインページにアクセス中...");
-        driver.get(LOGIN_URL);
+/**
+     * Seleniumを使ってログイン操作を実行します。
+     * ログイン失敗（ID/パスワード間違い）も検知します。
+     * @throws IOException ログイン失敗（ID/パスワード間違い、タイムアウトなど）
+     */
+    private void performLogin(WebDriver driver, String username, String password, LoginProgressListener listener) throws IOException{ 
+        
+        // ★ 待機時間を調整（Renderの遅さを考慮して全体的に長めに）
+        WebDriverWait longWait = new WebDriverWait(driver, Duration.ofSeconds(120)); // タイムアウト対策で120秒
+        WebDriverWait shortWait = new WebDriverWait(driver, Duration.ofSeconds(10)); // エラー確認用の短い待機
 
-        listener.onStatusUpdate("INPUT_USERNAME", "ユーザー名を入力中...");
-        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("i0116"))).sendKeys(username);
-        listener.onStatusUpdate("CLICK_NEXT_1", "「次へ」をクリック中...");
-        wait.until(ExpectedConditions.elementToBeClickable(By.id("idSIButton9"))).click();
+        try {
+            listener.onStatusUpdate("ACCESS_LOGIN_PAGE", "ログインページにアクセス中...");
+            driver.get(LOGIN_URL);
 
-        listener.onStatusUpdate("INPUT_PASSWORD", "パスワードを入力中...");
-        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("i0118"))).sendKeys(password);
-        listener.onStatusUpdate("CLICK_SIGNIN", "「サインイン」をクリック中...");
-        wait.until(ExpectedConditions.elementToBeClickable(By.id("idSIButton9"))).click();
-        listener.onStatusUpdate("PASSWORD_SUBMITTED", "パスワードを送信しました。");
+            listener.onStatusUpdate("INPUT_USERNAME", "ユーザー名を入力中...");
+            longWait.until(ExpectedConditions.visibilityOfElementLocated(By.id("i0116"))).sendKeys(username);
+            listener.onStatusUpdate("CLICK_NEXT_1", "「次へ」をクリック中...");
+            longWait.until(ExpectedConditions.elementToBeClickable(By.id("idSIButton9"))).click();
 
-        detectMfaPrompt(driver, listener);
-        handleStaySignedInPrompt(driver, listener);
+            // ★★★ ユーザー名間違いのチェック ★★★
+            try {
+                // "usernameError" が 10秒以内に表示されるかチェック
+                WebElement errorElement = shortWait.until(ExpectedConditions.visibilityOfElementLocated(By.id("usernameError")));
+                String errorMessage = errorElement.getText();
+                log.error("ログイン失敗 (ユーザー名): {}", errorMessage);
+                throw new IOException("ログインに失敗しました: " + errorMessage); // エラーをスロー
+            } catch (TimeoutException e) {
+                // エラーが出なかった (タイムアウトした) = 正常
+                log.info("ユーザー名エラーは表示されませんでした。パスワード入力に進みます。");
+            }
 
-        listener.onStatusUpdate("WAITING_HOME", "ホーム画面への遷移を待機中...");
-        wait.until(ExpectedConditions.urlContains("/ct/home"));
-        listener.onStatusUpdate("LOGIN_SUCCESS", "ログイン成功を確認しました。");
+            listener.onStatusUpdate("INPUT_PASSWORD", "パスワードを入力中...");
+            longWait.until(ExpectedConditions.visibilityOfElementLocated(By.id("i0118"))).sendKeys(password);
+            listener.onStatusUpdate("CLICK_SIGNIN", "「サインイン」をクリック中...");
+            longWait.until(ExpectedConditions.elementToBeClickable(By.id("idSIButton9"))).click();
+            listener.onStatusUpdate("PASSWORD_SUBMITTED", "パスワードを送信しました。");
+
+            // ★★★ パスワード間違いのチェック ★★★
+            try {
+                // "passwordError" が 10秒以内に表示されるかチェック
+                WebElement errorElement = shortWait.until(ExpectedConditions.visibilityOfElementLocated(By.id("passwordError")));
+                String errorMessage = errorElement.getText();
+                log.error("ログイン失敗 (パスワード): {}", errorMessage);
+                throw new IOException("ログインに失敗しました: " + errorMessage); // エラーをスロー
+            } catch (TimeoutException e) {
+                // エラーが出なかった (タイムアウトした) = 正常
+                log.info("パスワードエラーは表示されませんでした。MFA/KMSIに進みます。");
+            }
+
+            detectMfaPrompt(driver, listener);
+            handleStaySignedInPrompt(driver, listener, longWait); 
+
+            listener.onStatusUpdate("WAITING_HOME", "ホーム画面への遷移を待機中...");
+            longWait.until(ExpectedConditions.urlContains("/ct/home")); 
+            listener.onStatusUpdate("LOGIN_SUCCESS", "ログイン成功を確認しました。");
+
+        } catch (TimeoutException e) {
+            log.error("ログイン操作中にタイムアウトが発生しました。", e);
+            // タイムアウトした瞬間のスクリーンショットを撮る (Renderでは難しいかもしれないが、デバッグ用に)
+            // saveScreenshot(driver, "timeout_screenshot.png");
+            throw new IOException("ログインページが時間内に表示されませんでした。処理が遅延している可能性があります。", e);
+        }
     }
 
     private void detectMfaPrompt(WebDriver driver, LoginProgressListener listener) {
-        WebDriverWait shortWait = new WebDriverWait(driver, Duration.ofSeconds(30)); // 少し長めに待つ
+        WebDriverWait mfaWait = new WebDriverWait(driver, Duration.ofSeconds(30)); 
         try {
             log.info("MFAプロンプトが表示されるか確認中...");
-            shortWait.until(ExpectedConditions.visibilityOfElementLocated(By.id("idRichContext_DisplaySign")));
+            mfaWait.until(ExpectedConditions.visibilityOfElementLocated(By.id("idRichContext_DisplaySign")));
             String displayCode = extractTextSafely(driver, By.id("idRichContext_DisplaySign"));
             if (displayCode != null && !displayCode.isBlank()) {
                 String normalized = displayCode.trim();
@@ -205,45 +246,40 @@ public class ManabaScrapingOrchestrator {
             }
         } catch (TimeoutException ignored) {
             log.info("MFAプロンプトは表示されませんでした。");
-            // MFA が要求されない場合は何もしない
         } catch (Exception e) {
             log.error("MFAプロンプト検出中に予期せぬエラーが発生しました。", e);
-            // エラーが発生してもログイン処理自体は続行を試みる
         }
     }
 
-    private void handleStaySignedInPrompt(WebDriver driver, LoginProgressListener listener) {
-        WebDriverWait kmsiWait = new WebDriverWait(driver, Duration.ofSeconds(60));
+    private void handleStaySignedInPrompt(WebDriver driver, LoginProgressListener listener, WebDriverWait kmsiWait) {
         try {
             log.info("「サインイン状態の維持」プロンプトが表示されるか確認中...");
-            kmsiWait.until(d -> {
+            kmsiWait.until(d -> { 
                 try {
-                    WebElement button = d.findElement(By.id("idSIButton9")); // KMSI画面のボタンIDを確認
+                    WebElement button = d.findElement(By.id("idSIButton9"));
                     if (button.isDisplayed() && shouldClickStaySignedIn(button)) {
                         log.info("「サインイン状態の維持」プロンプトを「はい」でクリックします。");
                         listener.onStatusUpdate("CONFIRM_KMSI", "サインイン状態の維持を確認しています...");
                         button.click();
-                        return true; // ボタンをクリックしたので待機終了
+                        return true;
                     } else if (d.getCurrentUrl().contains("/ct/home")) {
                         log.info("すでにホーム画面に遷移済みのため、KMSI確認はスキップします。");
-                        return true; // すでにホーム画面なら待機終了
+                        return true;
                     }
-                } catch (org.openqa.selenium.NoSuchElementException ignored) { // ★ 完全修飾名で指定
-                    // 要素が見つからない場合、まだ表示されていないか、表示されないパターン
+                } catch (org.openqa.selenium.NoSuchElementException ignored) {
                     if (d.getCurrentUrl().contains("/ct/home")) {
                         log.info("すでにホーム画面に遷移済みのため、KMSI確認はスキップします。");
-                        return true; // すでにホーム画面なら待機終了
+                        return true;
                     }
-                    return false; // まだ待機
+                    return false;
                 } catch (Exception e) {
                     log.warn("KMSIプロンプトの処理中にエラーが発生しましたが、続行します。", e);
-                    return true; // 不明なエラーでも先に進む
+                    return true;
                 }
-                return false; // まだ待機
+                return false;
             });
         } catch (TimeoutException ignored) {
             log.info("「サインイン状態の維持」プロンプトは表示されませんでした。");
-            // タイムアウト = プロンプトが表示されないか、ホーム画面に遷移済み
         } catch (Exception e) {
             log.error("KMSIプロンプト処理中に予期せぬエラーが発生しました。", e);
         }
