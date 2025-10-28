@@ -64,7 +64,6 @@ const LoginForm = ({ loading, error, onSubmit }: LoginFormProps) => {
               placeholder="例: ab123"
               style={{ flex: 1 }}
               value={
-                // 表示はローカル部分のみ。form.username が DOMAIN 付きなら切り出す
                 form.username && form.username.endsWith(DOMAIN)
                   ? form.username.slice(0, -DOMAIN.length)
                   : form.username
@@ -84,6 +83,7 @@ const LoginForm = ({ loading, error, onSubmit }: LoginFormProps) => {
             <span
               aria-hidden
               style={{
+                marginLeft: "-0.25rem",
                 padding: "0.55rem 0.75rem",
                 background: "var(--primary-light)",
                 borderRadius: "0.5rem",
@@ -94,15 +94,6 @@ const LoginForm = ({ loading, error, onSubmit }: LoginFormProps) => {
             >
               {DOMAIN}
             </span>
-          </div>
-          <div
-            style={{
-              marginTop: "0.35rem",
-              color: "var(--text-muted)",
-              fontSize: "0.85rem",
-            }}
-          >
-            （ローカル部分を入力してください。ドメインは固定：{DOMAIN}）
           </div>
         </div>
         <div className="form-field">
