@@ -45,7 +45,7 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
        configuration.setAllowedOrigins(List.of(
-                "http://localhost:5173",
+                "http://localhost:5174",
                 "http://schedynabi.kitzu.net",
                 "https://schedynabi.kitzu.net",
                 "https://schedy-nabi-oqgl.vercel.app"

@@ -43,11 +43,6 @@ const LoginForm = ({ loading, error, onSubmit }: LoginFormProps) => {
       </h1>
       <p className="text-muted" style={{ marginBottom: "1.5rem" }}>
         大学の学習管理システム（manaba）から時間割・課題情報を取得します。
-        <br />
-        「ログイン状態を記録する」がオンの場合、この端末のブラウザに暗号化した
-        認証トークンを保存し、再同期時に自動利用します（サーバー側には保存しません）。
-        <br />
-        共有端末ではオフにしてください。
       </p>
       {error ? <ErrorBanner message={error} /> : null}
       <form onSubmit={handleSubmit}>
