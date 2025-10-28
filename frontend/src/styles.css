@@ -258,6 +258,13 @@ button {
   margin-top: 1rem;
 }
 
+/* スマホ向けの追加調整 */
+.timetable-content {
+  /* 横幅の広い時間割をスマホでスワイプできるようにする */
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .timetable-actions {
   display: flex;
   justify-content: space-between;
@@ -396,6 +403,49 @@ button {
 
   .login-progress__mfa-code {
     font-size: 3rem;
+  }
+}
+
+/* 追加の小画面最適化 (<=480px) */
+@media (max-width: 480px) {
+  :root {
+    /* 少しフォントを調節して読みやすく */
+    font-size: 15px;
+  }
+
+  .button {
+    width: 100%;
+    padding: 0.9rem 1rem;
+    font-size: 1rem;
+    min-height: 44px; /* タップ領域を確保 */
+    border-radius: 0.75rem;
+  }
+
+  .form-field input,
+  .form-field select,
+  .form-field textarea {
+    padding: 0.9rem 0.9rem;
+    font-size: 1rem;
+  }
+
+  .header h1 {
+    font-size: 1.1rem;
+  }
+
+  .dashboard-grid {
+    grid-template-columns: 1fr; /* 単一カラムにして横詰まりを防ぐ */
+  }
+
+  .card {
+    padding: 0.9rem;
+  }
+
+  .timetable-table {
+    min-width: 600px; /* テーブルが小さすぎないようにしスクロールを促す */
+  }
+
+  .login-wrapper {
+    margin: 0.75rem;
   }
 }
 
