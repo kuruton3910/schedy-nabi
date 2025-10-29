@@ -29,7 +29,7 @@ const Dashboard = ({
   onLogout,
   onManualClass,
 }: Props) => {
-  const [showTimetable, setShowTimetable] = useState(false);
+  // 時間割は常に表示するためトグルは不要
   const [isEditingTimetable, setIsEditingTimetable] = useState(false);
 
   const autoCount = session.timetable.filter(
@@ -89,42 +89,34 @@ const Dashboard = ({
           <div className="card">
             <div className="timetable-header">
               <h2>時間割表</h2>
-              <button
-                className="button button-primary"
-                onClick={() => setShowTimetable(!showTimetable)}
-              >
-                {showTimetable ? "閉じる" : "表示"}
-              </button>
             </div>
 
-            {showTimetable && (
-              <div className="timetable-content">
-                <div className="timetable-actions">
-                  <button
-                    className="button button-secondary"
-                    onClick={() => setIsEditingTimetable(!isEditingTimetable)}
-                  >
-                    {isEditingTimetable ? "編集終了" : "編集"}
-                  </button>
-                  <span className="text-muted">
-                    自動 {autoCount} 件・手動 {manualCount} 件
-                  </span>
-                </div>
-
-                <TimetableGrid courses={session.timetable} />
-
-                {isEditingTimetable && (
-                  <div className="manual-class-form">
-                    <h3>手動で授業を追加</h3>
-                    <ManualClassForm
-                      username={session.username}
-                      loading={manualLoading}
-                      onSubmit={onManualClass}
-                    />
-                  </div>
-                )}
+            <div className="timetable-content">
+              <div className="timetable-actions">
+                <button
+                  className="button button-secondary"
+                  onClick={() => setIsEditingTimetable(!isEditingTimetable)}
+                >
+                  {isEditingTimetable ? "編集終了" : "編集"}
+                </button>
+                <span className="text-muted">
+                  自動 {autoCount} 件・手動 {manualCount} 件
+                </span>
               </div>
-            )}
+
+              <TimetableGrid courses={session.timetable} />
+
+              {isEditingTimetable && (
+                <div className="manual-class-form">
+                  <h3>手動で授業を追加</h3>
+                  <ManualClassForm
+                    username={session.username}
+                    loading={manualLoading}
+                    onSubmit={onManualClass}
+                  />
+                </div>
+              )}
+            </div>
           </div>
         </section>
       </div>

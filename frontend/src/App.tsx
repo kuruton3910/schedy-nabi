@@ -17,6 +17,7 @@ import {
   addManualClass,
   fetchTimetable,
 } from "./api/client"; // APIクライアントをimport
+import getMockSession from "./mock/mockData";
 
 // localStorageに保存するキー
 const STORAGE_KEY_USER_ID = "schedyNabiUserId";
@@ -101,6 +102,16 @@ function App() {
     }
   };
 
+  // --- モック（デモ）ログイン ---
+  const handleDemoLogin = async () => {
+    // 即座にモックセッションを作成して表示する
+    const mock = getMockSession();
+    setSession(mock);
+    // demoユーザーとして保存しておく（自動同期を試したい場合）
+    localStorage.setItem(STORAGE_KEY_USER_ID, mock.username);
+    showSuccess("デモモードでダッシュボードを表示しています。");
+  };
+
   // --- ログアウト処理 (IDを削除) ---
   const handleLogout = async () => {
     if (session) {
@@ -141,7 +152,12 @@ function App() {
 
   // Welcome画面表示判定
   if (showWelcome && !session) {
-    return <WelcomePage onGetStarted={() => setShowWelcome(false)} />;
+    return (
+      <WelcomePage
+        onGetStarted={() => setShowWelcome(false)}
+        onDemo={handleDemoLogin}
+      />
+    );
   }
 
   // セッションがあればダッシュボード表示
@@ -174,6 +190,7 @@ function App() {
         loading={loading} // handleLogin時のローディング
         error={error}
         onSubmit={handleLogin}
+        onDemo={handleDemoLogin}
       />
       {loading && !loginProgress && <p>{statusMessage || "処理中..."}</p>}{" "}
       {/* Job開始直後など */}

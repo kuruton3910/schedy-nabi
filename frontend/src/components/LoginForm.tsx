@@ -6,9 +6,10 @@ interface LoginFormProps {
   loading: boolean;
   error?: string | null;
   onSubmit: (payload: LoginPayload) => Promise<void> | void;
+  onDemo?: () => Promise<void> | void;
 }
 
-const LoginForm = ({ loading, error, onSubmit }: LoginFormProps) => {
+const LoginForm = ({ loading, error, onSubmit, onDemo }: LoginFormProps) => {
   const [form, setForm] = useState<LoginPayload>({
     username: "",
     password: "",
@@ -122,6 +123,17 @@ const LoginForm = ({ loading, error, onSubmit }: LoginFormProps) => {
         >
           {loading ? "情報取得中..." : "ログインして情報を取得"}
         </button>
+        {/* {typeof onDemo === "function" ? (
+          <button
+            type="button"
+            className="button button-secondary"
+            style={{ width: "100%", marginTop: "0.6rem" }}
+            onClick={() => onDemo()}
+            disabled={loading}
+          >
+            デモで開始
+          </button>
+        ) : null} */}
       </form>
     </div>
   );

@@ -2,9 +2,10 @@ import React from "react";
 
 interface Props {
   onGetStarted: () => void;
+  onDemo?: () => void;
 }
 
-const WelcomePage = ({ onGetStarted }: Props) => {
+const WelcomePage = ({ onGetStarted, onDemo }: Props) => {
   return (
     <div className="welcome-container">
       <div className="welcome-card">
@@ -94,6 +95,15 @@ const WelcomePage = ({ onGetStarted }: Props) => {
           >
             はじめる
           </button>
+          {/* {onDemo ? (
+            <button
+              className="button button-secondary welcome-button"
+              onClick={onDemo}
+              style={{ marginLeft: "0.6rem" }}
+            >
+              デモで開始
+            </button>
+          ) : null} */}
         </div>
       </div>
     </div>
