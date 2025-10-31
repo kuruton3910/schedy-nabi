@@ -282,11 +282,6 @@ button {
 }
 
 @media (max-width: 768px) {
-  .timetable-content {
-    max-height: 48vh; /* 画面の半分程度を占めるようにして縦スクロール可 */
-    overflow-y: auto;
-  }
-
   /* モバイルではテーブルを横に広げずに収めるため min-width を解除 */
   .timetable-table {
     min-width: 0;
@@ -294,10 +289,6 @@ button {
 }
 
 @media (max-width: 420px) {
-  .timetable-content {
-    max-height: 56vh; /* より小さい端末は縦スクロール領域を広めに */
-  }
-
   .timetable-table {
     min-width: 0;
   }

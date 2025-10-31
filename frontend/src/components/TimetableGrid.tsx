@@ -34,7 +34,7 @@ const TimetableGrid = ({ courses }: Props) => {
   // remove forced minWidth to allow table to shrink on mobile
 
   return (
-    <div style={{ overflowX: "auto" }}>
+    <div>
       <table className="timetable-table" style={{ tableLayout: "fixed" }}>
         <thead>
           <tr>

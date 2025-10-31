@@ -92,18 +92,6 @@ const Dashboard = ({
             </div>
 
             <div className="timetable-content">
-              <div className="timetable-actions">
-                <button
-                  className="button button-secondary"
-                  onClick={() => setIsEditingTimetable(!isEditingTimetable)}
-                >
-                  {isEditingTimetable ? "編集終了" : "編集"}
-                </button>
-                <span className="text-muted">
-                  自動 {autoCount} 件・手動 {manualCount} 件
-                </span>
-              </div>
-
               <TimetableGrid courses={session.timetable} />
 
               {isEditingTimetable && (
