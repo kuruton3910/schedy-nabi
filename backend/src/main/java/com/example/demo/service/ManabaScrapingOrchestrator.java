@@ -5,6 +5,7 @@ import io.github.bonigarcia.wdm.WebDriverManager;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.openqa.selenium.*;
+import org.openqa.selenium.StaleElementReferenceException;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.support.ui.ExpectedConditions;
@@ -18,6 +19,7 @@ import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.*;
+import java.util.function.Predicate;
 // import java.util.NoSuchElementException; // ← ambiguous なので削除
 
 /**
@@ -175,7 +177,6 @@ public class ManabaScrapingOrchestrator {
         
         // ★ 待機時間を調整（Renderの遅さを考慮して全体的に長めに）
         WebDriverWait longWait = new WebDriverWait(driver, Duration.ofSeconds(120)); // タイムアウト対策で120秒
-        WebDriverWait shortWait = new WebDriverWait(driver, Duration.ofSeconds(10)); // エラー確認用の短い待機
 
         try {
             listener.onStatusUpdate("ACCESS_LOGIN_PAGE", "ログインページにアクセス中...");
@@ -187,16 +188,19 @@ public class ManabaScrapingOrchestrator {
             longWait.until(ExpectedConditions.elementToBeClickable(By.id("idSIButton9"))).click();
 
             // ★★★ ユーザー名間違いのチェック ★★★
-            try {
-                // "usernameError" が 10秒以内に表示されるかチェック
-                WebElement errorElement = shortWait.until(ExpectedConditions.visibilityOfElementLocated(By.id("usernameError")));
-                String errorMessage = errorElement.getText();
+            boolean usernameError = waitForErrorOrAdvance(
+                    driver,
+                    By.id("usernameError"),
+                    Duration.ofSeconds(8),
+                    drv -> isElementDisplayed(drv, By.id("i0118"))
+            );
+            if (usernameError) {
+                String errorMessage = extractTextSafely(driver, By.id("usernameError"));
                 log.error("ログイン失敗 (ユーザー名): {}", errorMessage);
-                throw new IOException("ログインに失敗しました: " + errorMessage); // エラーをスロー
-            } catch (TimeoutException e) {
-                // エラーが出なかった (タイムアウトした) = 正常
-                log.info("ユーザー名エラーは表示されませんでした。パスワード入力に進みます。");
+                throw new IOException("ログインに失敗しました: " + errorMessage);
             }
+
+            log.info("ユーザー名エラーは表示されませんでした。パスワード入力に進みます。");
 
             listener.onStatusUpdate("INPUT_PASSWORD", "パスワードを入力中...");
             longWait.until(ExpectedConditions.visibilityOfElementLocated(By.id("i0118"))).sendKeys(password);
@@ -205,16 +209,21 @@ public class ManabaScrapingOrchestrator {
             listener.onStatusUpdate("PASSWORD_SUBMITTED", "パスワードを送信しました。");
 
             // ★★★ パスワード間違いのチェック ★★★
-            try {
-                // "passwordError" が 10秒以内に表示されるかチェック
-                WebElement errorElement = shortWait.until(ExpectedConditions.visibilityOfElementLocated(By.id("passwordError")));
-                String errorMessage = errorElement.getText();
+            boolean passwordError = waitForErrorOrAdvance(
+                    driver,
+                    By.id("passwordError"),
+                    Duration.ofSeconds(8),
+                    drv -> isElementDisplayed(drv, By.id("idRichContext_DisplaySign"))
+                            || drv.getCurrentUrl().contains("/ct/home")
+                            || isKmsiPromptDisplayed(drv)
+            );
+            if (passwordError) {
+                String errorMessage = extractTextSafely(driver, By.id("passwordError"));
                 log.error("ログイン失敗 (パスワード): {}", errorMessage);
-                throw new IOException("ログインに失敗しました: " + errorMessage); // エラーをスロー
-            } catch (TimeoutException e) {
-                // エラーが出なかった (タイムアウトした) = 正常
-                log.info("パスワードエラーは表示されませんでした。MFA/KMSIに進みます。");
+                throw new IOException("ログインに失敗しました: " + errorMessage);
             }
+
+            log.info("パスワードエラーは表示されませんでした。MFA/KMSIに進みます。");
 
             detectMfaPrompt(driver, listener);
             handleStaySignedInPrompt(driver, listener, longWait); 
@@ -344,6 +353,53 @@ public class ManabaScrapingOrchestrator {
             ));
         }
         return entries;
+    }
+    private boolean waitForErrorOrAdvance(WebDriver driver, By errorLocator, Duration timeout, Predicate<WebDriver> progressCondition) {
+        long deadline = System.nanoTime() + timeout.toNanos();
+        while (System.nanoTime() < deadline) {
+            if (isElementDisplayed(driver, errorLocator)) {
+                return true;
+            }
+            if (progressCondition != null) {
+                try {
+                    if (progressCondition.test(driver)) {
+                        return false;
+                    }
+                } catch (Exception ignored) {
+                    // progress condition evaluation can be noisy; ignore and retry
+                }
+            }
+            sleepSilently(200);
+        }
+        return false;
+    }
+
+    private boolean isElementDisplayed(WebDriver driver, By locator) {
+        try {
+            WebElement element = driver.findElement(locator);
+            return element != null && element.isDisplayed();
+        } catch (org.openqa.selenium.NoSuchElementException | StaleElementReferenceException ignored) {
+            return false;
+        }
+    }
+
+    private boolean isKmsiPromptDisplayed(WebDriver driver) {
+        try {
+            WebElement prompt = driver.findElement(By.xpath("//*[contains(text(),'サインイン状態の維持')]") );
+            return prompt.isDisplayed();
+        } catch (org.openqa.selenium.NoSuchElementException ignored) {
+            return false;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private void sleepSilently(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     private List<AssignmentEntry> convertAssignments(List<com.example.demo.dto.Assignment> assignments) {
