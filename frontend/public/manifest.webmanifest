@@ -4,7 +4,7 @@
   "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#0d9488",
+  "theme_color": "#8bc34a",
   "icons": [
     {
       "src": "/icons/SchedyNabi_icon.png",
