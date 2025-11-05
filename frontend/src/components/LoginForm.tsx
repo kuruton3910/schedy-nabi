@@ -50,7 +50,7 @@ const LoginForm = ({ loading, error, onSubmit, onDemo }: LoginFormProps) => {
         <div className="form-field">
           <label htmlFor="username">大学メールアドレス</label>
           {/* ローカル部分を入力し、ドメインは固定表示するUI */}
-          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          <div className="login-email-input">
             <input
               id="username"
               type="text"
@@ -76,18 +76,7 @@ const LoginForm = ({ loading, error, onSubmit, onDemo }: LoginFormProps) => {
                 }
               }}
             />
-            <span
-              aria-hidden
-              style={{
-                marginLeft: "-0.25rem",
-                padding: "0.55rem 0.75rem",
-                background: "var(--primary-light)",
-                borderRadius: "0.5rem",
-                border: "1px solid rgba(77,208,225,0.15)",
-                color: "var(--text-muted)",
-                fontSize: "0.95rem",
-              }}
-            >
+            <span aria-hidden className="login-email-domain">
               {DOMAIN}
             </span>
           </div>
@@ -123,7 +112,7 @@ const LoginForm = ({ loading, error, onSubmit, onDemo }: LoginFormProps) => {
         >
           {loading ? "情報取得中..." : "ログインして情報を取得"}
         </button>
-         {typeof onDemo === "function" ? (
+        {typeof onDemo === "function" ? (
           <button
             type="button"
             className="button button-secondary"
@@ -133,7 +122,7 @@ const LoginForm = ({ loading, error, onSubmit, onDemo }: LoginFormProps) => {
           >
             デモで開始
           </button>
-        ) : null} 
+        ) : null}
       </form>
     </div>
   );
