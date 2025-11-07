@@ -80,20 +80,18 @@ public class AuthService {
             }
         }
 
-        if (existingCookies.isEmpty() && (password == null || password.isBlank())) {
-            // Cookieがなくパスワードもない場合、ログインできないのでエラー
-             if (credentialOpt.isPresent() && credentialOpt.get().getEncryptedPassword() != null) {
-                 // DBにパスワードがあればそれを使う (rememberMe=trueで以前保存した場合)
-                 try {
-                     password = encryptionService.decrypt(credentialOpt.get().getEncryptedPassword());
-                     log.debug("DBからパスワードを復号しました。");
-                 } catch (Exception e) {
-                     log.error("DBのパスワード復号に失敗しました。", e);
-                     throw new IllegalStateException("有効な認証情報がありません。パスワードを再入力してください。");
-                 }
-             } else {
-                 throw new IllegalStateException("有効な認証情報がありません。パスワードを入力して再試行してください。");
-             }
+        if (password == null || password.isBlank()) {
+            if (credentialOpt.isPresent() && credentialOpt.get().getEncryptedPassword() != null) {
+                try {
+                    password = encryptionService.decrypt(credentialOpt.get().getEncryptedPassword());
+                    log.debug("DBからパスワードを復号しました。");
+                } catch (Exception e) {
+                    log.error("DBのパスワード復号に失敗しました。", e);
+                    throw new IllegalStateException("有効な認証情報がありません。パスワードを再入力してください。");
+                }
+            } else if (existingCookies.isEmpty()) {
+                throw new IllegalStateException("有効な認証情報がありません。パスワードを入力して再試行してください。");
+            }
         }
 
 

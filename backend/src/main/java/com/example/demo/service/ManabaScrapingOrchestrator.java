@@ -5,7 +5,6 @@ import io.github.bonigarcia.wdm.WebDriverManager;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.openqa.selenium.*;
-import org.openqa.selenium.StaleElementReferenceException;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.support.ui.ExpectedConditions;
@@ -106,16 +105,28 @@ public class ManabaScrapingOrchestrator {
 
     private InternalSyncOutcome scrapeWithExistingCookies(String username, Map<String, String> cookies, LoginProgressListener listener) throws IOException {
         listener.onStatusUpdate("FETCH_HOME", "ホーム画面を取得中...");
-        Document homeDoc = Jsoup.connect(HOME_COURSE_URL)
-                .cookies(cookies).userAgent(USER_AGENT).timeout(REQUEST_TIMEOUT_MILLIS).get();
+
+        org.jsoup.Connection.Response response = Jsoup.connect(HOME_COURSE_URL)
+                .cookies(cookies) 
+                .userAgent(USER_AGENT)
+                .timeout(REQUEST_TIMEOUT_MILLIS)
+                .followRedirects(true) 
+                .execute();
+        Document homeDoc = response.parse();
+
+       
         if (isLoginPage(homeDoc)) {
             throw new IOException("Cookieの有効期限が切れています。");
         }
         listener.onStatusUpdate("FETCH_HOME_SUCCESS", "ホーム画面の取得成功。");
-        return buildInternalSyncOutcome(username, cookies, listener);
+
+        Map<String, String> responseCookies = response.cookies();
+        Map<String, String> updatedCookies = new HashMap<>(cookies);
+        updatedCookies.putAll(responseCookies);
+
+        return buildInternalSyncOutcome(username, updatedCookies, listener);
     }
 
-    // ★★★ このメソッドを修正 ★★★
     private InternalSyncOutcome loginAndScrape(String username, String password, LoginProgressListener listener) throws IOException {
         WebDriverManager.chromedriver().setup();
         ChromeOptions options = new ChromeOptions();
