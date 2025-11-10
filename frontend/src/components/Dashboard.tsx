@@ -41,23 +41,17 @@ const Dashboard = ({
   return (
     <div className="dashboard-container">
       <header className="header">
-        <div style={{ display: "flex", alignItems: "center" }}>
+        <div className="header-leading">
           <img
+            className="header-logo"
             src="/icons/SchedyNabi_icon.png"
             alt="SchedyNabi logo"
-            style={{
-              width: "46px",
-              height: "46px",
-              objectFit: "contain",
-              marginRight: "0.75rem",
-              marginTop: "-4px",
-            }}
           />
           <div>
             <h1>SchedyNabi</h1>
             <p
               className="text-muted"
-              style={{ marginTop: "0.2rem", fontSize: "0.85rem" }}
+              style={{ marginTop: "0.1em", fontSize: "0.85rem" }}
             >
               最終情報取得: {formatDateTime(session.syncedAt)}
             </p>
@@ -67,7 +61,7 @@ const Dashboard = ({
           <button
             className="button button-secondary"
             onClick={onLogout}
-            style={{ padding: "0.3rem 0.85rem" }}
+            style={{ padding: "0.1rem 0.85rem" }}
           >
             ログアウト
           </button>
