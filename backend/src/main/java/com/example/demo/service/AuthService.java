@@ -164,4 +164,52 @@ public class AuthService {
         // Cookieを含まないDTOだけを返す
         return outcome.syncResultDto();
     }
+
+    @Transactional
+    public void refreshSessionOnly(String universityId, LoginProgressListener listener) throws Exception {
+        Optional<UserCredential> credentialOpt = userCredentialRepository.findByUniversityId(universityId);
+        if (credentialOpt.isEmpty()) {
+            throw new IllegalStateException("指定されたユーザーIDの資格情報が見つかりません: " + universityId);
+        }
+
+        Map<String, String> existingCookies = Collections.emptyMap();
+        String password = null;
+
+        UserCredential credential = credentialOpt.get();
+        if (credential.getEncryptedSessionCookie() != null) {
+            try {
+                String decryptedCookieJson = encryptionService.decrypt(credential.getEncryptedSessionCookie());
+                existingCookies = gson.fromJson(decryptedCookieJson, COOKIE_MAP_TYPE);
+            } catch (Exception e) {
+                log.warn("保存済みCookieの復号に失敗しました。Cookieなしでセッション更新を試みます。");
+            }
+        }
+
+        if (credential.getEncryptedPassword() != null) {
+            try {
+                password = encryptionService.decrypt(credential.getEncryptedPassword());
+            } catch (Exception e) {
+                log.error("パスワードの復号に失敗しました。", e);
+                throw new IllegalStateException("有効な認証情報がありません。パスワードを再入力してください。");
+            }
+        }
+
+        Map<String, String> refreshedCookies;
+        try {
+            refreshedCookies = scrapingOrchestrator.refreshSessionOnly(universityId, password, existingCookies, listener);
+        } catch (IOException e) {
+            log.error("セッション更新中にエラーが発生しました。", e);
+            listener.onStatusUpdate("ERROR", "セッション更新に失敗しました: " + e.getMessage());
+            throw e;
+        }
+
+        if (refreshedCookies == null || refreshedCookies.isEmpty()) {
+            throw new IllegalStateException("新しいセッションクッキーを取得できませんでした。");
+        }
+
+        String encryptedCookie = encryptionService.encrypt(gson.toJson(refreshedCookies));
+        credential.setEncryptedSessionCookie(encryptedCookie);
+        userCredentialRepository.save(credential);
+        log.info("ユーザー資格情報 (ID: {}) のセッションCookieを更新しました。", universityId);
+    }
 }

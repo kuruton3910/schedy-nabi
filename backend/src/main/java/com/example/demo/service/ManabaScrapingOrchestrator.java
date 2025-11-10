@@ -103,31 +103,62 @@ public class ManabaScrapingOrchestrator {
         return loginAndScrape(username, password, listener);
     }
 
+    public Map<String, String> refreshSessionOnly(String username, String password, Map<String, String> existingCookies, LoginProgressListener listener) throws IOException {
+        listener.onStatusUpdate("AUTH_START", "セッション更新を開始します...");
+        if (existingCookies != null && !existingCookies.isEmpty()) {
+            try {
+                listener.onStatusUpdate("COOKIE_AUTH", "保存済みCookieでアクセスを確認中...");
+                return refreshCookiesWithExisting(username, existingCookies, listener);
+            } catch (IOException e) {
+                log.warn("Cookieによるセッション確認に失敗しました: {}", e.getMessage());
+                listener.onStatusUpdate("COOKIE_FAIL", "Cookieの再利用に失敗しました。パスワード認証へ移行します。");
+            }
+        }
+
+        if (username == null || username.isBlank() || password == null || password.isBlank()) {
+            throw new IllegalStateException("有効な認証情報がありません。パスワードを入力して再試行してください。");
+        }
+
+        listener.onStatusUpdate("PASSWORD_AUTH", "パスワードでセッションを再取得しています...");
+        return loginAndFetchCookies(username, password, listener);
+    }
+
     private InternalSyncOutcome scrapeWithExistingCookies(String username, Map<String, String> cookies, LoginProgressListener listener) throws IOException {
+        Map<String, String> refreshedCookies = refreshCookiesWithExisting(username, cookies, listener);
+        return buildInternalSyncOutcome(username, refreshedCookies, listener);
+    }
+
+    private Map<String, String> refreshCookiesWithExisting(String username, Map<String, String> cookies, LoginProgressListener listener) throws IOException {
         listener.onStatusUpdate("FETCH_HOME", "ホーム画面を取得中...");
 
         org.jsoup.Connection.Response response = Jsoup.connect(HOME_COURSE_URL)
-                .cookies(cookies) 
+                .cookies(cookies)
                 .userAgent(USER_AGENT)
                 .timeout(REQUEST_TIMEOUT_MILLIS)
-                .followRedirects(true) 
+                .followRedirects(true)
                 .execute();
         Document homeDoc = response.parse();
 
-       
         if (isLoginPage(homeDoc)) {
             throw new IOException("Cookieの有効期限が切れています。");
         }
         listener.onStatusUpdate("FETCH_HOME_SUCCESS", "ホーム画面の取得成功。");
 
-        Map<String, String> responseCookies = response.cookies();
         Map<String, String> updatedCookies = new HashMap<>(cookies);
-        updatedCookies.putAll(responseCookies);
+        Map<String, String> responseCookies = response.cookies();
+        if (responseCookies != null && !responseCookies.isEmpty()) {
+            updatedCookies.putAll(responseCookies);
+        }
 
-        return buildInternalSyncOutcome(username, updatedCookies, listener);
+        return updatedCookies;
     }
 
     private InternalSyncOutcome loginAndScrape(String username, String password, LoginProgressListener listener) throws IOException {
+        Map<String, String> freshCookies = loginAndFetchCookies(username, password, listener);
+        return buildInternalSyncOutcome(username, freshCookies, listener);
+    }
+
+    private Map<String, String> loginAndFetchCookies(String username, String password, LoginProgressListener listener) throws IOException {
         WebDriverManager.chromedriver().setup();
         ChromeOptions options = new ChromeOptions();
         // ★★★ Chromeバイナリのパスを指定する行を追加 ★★★
@@ -159,7 +190,7 @@ public class ManabaScrapingOrchestrator {
         if (freshCookies.isEmpty()) {
             throw new IOException("ログイン後のCookie取得に失敗しました。");
         }
-        return buildInternalSyncOutcome(username, freshCookies, listener);
+        return freshCookies;
     }
 
     private InternalSyncOutcome buildInternalSyncOutcome(String username, Map<String, String> cookies, LoginProgressListener listener) throws IOException {

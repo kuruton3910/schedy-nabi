@@ -86,14 +86,9 @@ public class SessionRefreshService {
                 // 3. 既存のAuthService.executeSyncを呼び出す
                 // これにより、(A)のセッションが有効ならJsoupで高速に終わり、
                 // (A)が切れていたらSelenium (performLogin) で再取得が実行される。
-                authService.executeSync(
-                    userId, 
-                    null,       // password (nullで渡せばAuthServiceがDBから復号してくれる設計)
-                    true,       // rememberMe (trueにしてDBのクッキーを上書き保存させる)
-                    dummyListener // ★ 修正したリスナーを渡す
-                );
+                authService.refreshSessionOnly(userId, dummyListener);
 
-                log.info("[{}] のセッション更新に成功しました。", userId);
+                log.info("[{}] のセッションCookie更新に成功しました。", userId);
 
             } catch (Exception e) {
                 // 一人の更新が失敗しても、次の人のためにループは止めない
