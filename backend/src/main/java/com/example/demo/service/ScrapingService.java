@@ -98,11 +98,18 @@ public class ScrapingService {
                         List<Map<String, String>> currentCellCourses = new ArrayList<>();
                         for(Element courseDiv : courseDivs) {
                             String courseName = courseDiv.selectFirst("a").text();
-                            String location = courseDiv.selectFirst(".couraselocationinfoV2").text();
+                            String rawLocation = courseDiv.selectFirst(".couraselocationinfoV2").text();
+                            String prefixToRemove = days[dayIndex] + period + "："; 
+                            String location;
+                            if (rawLocation.startsWith(prefixToRemove)) {
+                                location = rawLocation.substring(prefixToRemove.length());
+                                } else {
+                                location = rawLocation;
+                                        }
                             courseList.add(new Course(days[dayIndex], period, courseName, location));
                             Map<String, String> data = new HashMap<>();
                             data.put("name", courseName);
-                            data.put("location", location);
+                            data.put("location", location); 
                             currentCellCourses.add(data);
                         }
                         if (cell.hasAttr("rowspan")) {

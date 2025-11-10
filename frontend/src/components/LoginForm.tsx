@@ -35,7 +35,7 @@ const LoginForm = ({ loading, error, onSubmit, onDemo }: LoginFormProps) => {
       <h1
         style={{
           marginBottom: "1.5rem",
-          fontSize: "1.8rem",
+          fontSize: "1.6rem",
           textAlign: "center",
           color: "var(--primary-dark)",
         }}
@@ -112,7 +112,7 @@ const LoginForm = ({ loading, error, onSubmit, onDemo }: LoginFormProps) => {
         >
           {loading ? "情報取得中..." : "ログインして情報を取得"}
         </button>
-        {/* {typeof onDemo === "function" ? (
+        {typeof onDemo === "function" ? (
           <button
             type="button"
             className="button button-secondary"
@@ -122,7 +122,7 @@ const LoginForm = ({ loading, error, onSubmit, onDemo }: LoginFormProps) => {
           >
             デモで開始
           </button>
-        ) : null} */}
+        ) : null}
       </form>
     </div>
   );

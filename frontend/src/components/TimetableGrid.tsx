@@ -76,10 +76,6 @@ const TimetableGrid = ({ courses }: Props) => {
                             <span className="text-muted">
                               {entry.location || "教室未設定"}
                             </span>
-                            <span className="text-muted">
-                              {formatTime(entry.startTime)} –{" "}
-                              {formatTime(entry.endTime)}
-                            </span>
                           </div>
                         ))}
                       </div>
