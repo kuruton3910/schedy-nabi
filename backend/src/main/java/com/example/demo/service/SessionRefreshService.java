@@ -79,20 +79,20 @@ public class SessionRefreshService {
         // 2. ★★★ 1人ずつ、順番に実行する ★★★
         // (メモリクラッシュを防ぐため、並列実行は絶対にしない)
         for (UserCredential user : usersToRefresh) {
-            String userId = user.getUniversityId();
+            String universityId = user.getUniversityId();
             try {
-                log.info("[{}] のセッション更新処理を開始...", userId);
+                log.info("[{}] (profile:{}) のセッション更新処理を開始...", universityId, user.getId());
                 
                 // 3. 既存のAuthService.executeSyncを呼び出す
                 // これにより、(A)のセッションが有効ならJsoupで高速に終わり、
                 // (A)が切れていたらSelenium (performLogin) で再取得が実行される。
-                authService.refreshSessionOnly(userId, dummyListener);
+                authService.refreshSessionOnly(user.getId(), dummyListener);
 
-                log.info("[{}] のセッションCookie更新に成功しました。", userId);
+                log.info("[{}] (profile:{}) のセッションCookie更新に成功しました。", universityId, user.getId());
 
             } catch (Exception e) {
                 // 一人の更新が失敗しても、次の人のためにループは止めない
-                log.error("[{}] のセッション更新中にエラーが発生しました: {}", userId, e.getMessage(), e);
+                log.error("[{}] (profile:{}) のセッション更新中にエラーが発生しました: {}", universityId, user.getId(), e.getMessage(), e);
             }
         }
         log.info("--- バックグラウンド セッション更新ジョブが完了しました ---");

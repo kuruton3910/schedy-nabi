@@ -203,7 +203,7 @@ public class ManabaScrapingOrchestrator {
         String syncedAt = LocalDateTime.now(JAPAN_ZONE).format(ISO_FORMATTER);
         listener.onStatusUpdate("DATA_PROCESSING_COMPLETE", "データ整形完了。");
 
-        SyncResult syncResultDto = new SyncResult(username, syncedAt, timetable, assignments, nextClass);
+        SyncResult syncResultDto = new SyncResult(null, username, syncedAt, timetable, assignments, nextClass);
         return new InternalSyncOutcome(syncResultDto, cookies);
     }
 

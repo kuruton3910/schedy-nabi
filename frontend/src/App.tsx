@@ -20,7 +20,7 @@ import {
 import getMockSession from "./mock/mockData";
 
 // localStorageに保存するキー
-const STORAGE_KEY_USER_ID = "schedyNabiUserId";
+const STORAGE_KEY_USER_ID = "schedyNabiUserProfileId";
 
 function App() {
   const [showWelcome, setShowWelcome] = useState(true); // Welcome画面の表示状態
@@ -41,17 +41,25 @@ function App() {
   // --- 自動同期処理 ---
   useEffect(() => {
     const attemptAutoSync = async () => {
-      const storedUserId = localStorage.getItem(STORAGE_KEY_USER_ID);
-      if (storedUserId) {
+      // 旧フォーマットのキーを削除
+      localStorage.removeItem("schedyNabiUserId");
+
+      const storedProfileId = localStorage.getItem(STORAGE_KEY_USER_ID);
+      if (storedProfileId) {
         setShowWelcome(false); // IDがあればWelcomeは表示しない
         setLoading(true); // 自動同期中を示す
         setStatusMessage(
-          `保存されたID (${storedUserId}) で自動同期を試みています...`
+          `保存されたユーザーで自動同期を試みています...`
         );
         try {
           // ★ rememberMe を true に修正 ★
           const response = await sync(
-            { username: storedUserId, password: "", rememberMe: true }, // ← ここを true に変更！
+            {
+              userId: storedProfileId,
+              username: "",
+              password: "",
+              rememberMe: true,
+            },
             (progress) => setLoginProgress(progress)
           );
           setSession(response);
@@ -87,9 +95,10 @@ function App() {
       });
       setSession(response);
       // ★ ログイン成功時にIDをlocalStorageに保存
-      if (response.username) {
-        // usernameが返ってくる想定
-        localStorage.setItem(STORAGE_KEY_USER_ID, response.username);
+      if (response.userId) {
+        localStorage.setItem(STORAGE_KEY_USER_ID, response.userId);
+      } else {
+        localStorage.removeItem(STORAGE_KEY_USER_ID);
       }
       showSuccess("manabaからの情報取得が完了しました。");
     } catch (err: any) {
@@ -108,7 +117,9 @@ function App() {
     const mock = getMockSession();
     setSession(mock);
     // demoユーザーとして保存しておく（自動同期を試したい場合）
-    localStorage.setItem(STORAGE_KEY_USER_ID, mock.username);
+    if (mock.userId) {
+      localStorage.setItem(STORAGE_KEY_USER_ID, mock.userId);
+    }
     showSuccess("デモモードでダッシュボードを表示しています。");
   };
 
@@ -125,7 +136,7 @@ function App() {
     setError(null);
     setSuccessMessage(null);
     // ★ ログアウト時にIDをlocalStorageから削除
-    localStorage.removeItem(STORAGE_KEY_USER_ID);
+  localStorage.removeItem(STORAGE_KEY_USER_ID);
     setShowWelcome(false); // ログアウト後はログインフォーム表示
   };
 

@@ -36,6 +36,7 @@ export async function sync(
     method: "POST",
     headers: buildHeaders(true),
     body: JSON.stringify({
+      userId: payload.userId,
       username: payload.username,
       password: payload.password,
       // ★ rememberMe も送信するように追加

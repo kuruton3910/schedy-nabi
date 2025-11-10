@@ -7,6 +7,7 @@ export const getMockSession = (
   const later = new Date(now.getTime() + 1000 * 60 * 60);
 
   return {
+    userId: "demo-user-id",
     username,
     syncedAt: now.toISOString(),
     nextClass: {

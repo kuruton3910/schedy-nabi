@@ -31,6 +31,7 @@ export interface NextClassCard {
 }
 
 export interface SyncResponse {
+  userId?: string | null;
   username: string;
   syncedAt: string;
   nextClass: NextClassCard | null;
@@ -39,6 +40,7 @@ export interface SyncResponse {
 }
 
 export interface LoginPayload {
+  userId?: string;
   username: string;
   password: string;
   rememberMe: boolean;
@@ -82,6 +84,8 @@ export interface SyncJobResponse {
   mfaCode?: string | null;
   mfaMessage?: string | null;
   updatedAt: string;
+  userId?: string | null;
+  username?: string | null;
   result?: SyncResponse;
   error?: string | null;
 }

@@ -53,7 +53,8 @@ public class AuthService {
      * 3. 結果をDBに保存
      * の一連の流れをトランザクション管理下で行う。
      *
-     * @param universityId 大学のID
+    * @param userProfileId ユーザープロファイルのUUID（任意）
+    * @param universityId 大学のID
      * @param password     大学のパスワード
      * @param rememberMe   パスワードを保存するかどうか
      * @param listener     進捗通知を受け取るリスナー (ManabaScrapingOrchestratorの型)
@@ -62,12 +63,32 @@ public class AuthService {
      */
     @Transactional
     // ★★★ listener引数の型を ManabaScrapingOrchestrator.LoginProgressListener に修正 ★★★
-    public SyncResult executeSync(String universityId, String password, boolean rememberMe, LoginProgressListener listener) throws Exception {
+    public SyncResult executeSync(String userProfileId, String universityId, String password, boolean rememberMe, LoginProgressListener listener) throws Exception {
 
-        // --- ステップ1: DBから既存のCookieを読み込む試み ---
-        Optional<UserCredential> credentialOpt = userCredentialRepository.findByUniversityId(universityId);
+        UUID profileUuid = null;
+        Optional<UserCredential> credentialOpt = Optional.empty();
+
+        if (userProfileId != null && !userProfileId.isBlank()) {
+            try {
+                profileUuid = UUID.fromString(userProfileId);
+                credentialOpt = userCredentialRepository.findById(profileUuid);
+            } catch (IllegalArgumentException e) {
+                log.warn("無効なユーザープロファイルIDが指定されました: {}", userProfileId);
+            }
+        }
+
+        if (credentialOpt.isEmpty() && universityId != null && !universityId.isBlank()) {
+            credentialOpt = userCredentialRepository.findByUniversityId(universityId);
+            if (credentialOpt.isPresent()) {
+                profileUuid = credentialOpt.get().getId();
+            }
+        }
+
+        if (credentialOpt.isEmpty() && (universityId == null || universityId.isBlank())) {
+            throw new IllegalStateException("ユーザーを特定できませんでした。大学IDを指定してください。");
+        }
+
         Map<String, String> existingCookies = Collections.emptyMap();
-
         if (credentialOpt.isPresent() && credentialOpt.get().getEncryptedSessionCookie() != null) {
             log.debug("既存のセッションCookieを復号します。");
             try {
@@ -76,7 +97,6 @@ public class AuthService {
                 log.debug("Cookieの復号に成功しました。");
             } catch (Exception e) {
                 log.warn("保存済みCookieの復号に失敗しました。Cookieなしで続行します。", e);
-                // 復号に失敗した場合は、古いCookieとして扱わず、空のままで続行
             }
         }
 
@@ -94,82 +114,96 @@ public class AuthService {
             }
         }
 
-
-        // --- ステップ2: スクレイピング司令塔（Orchestrator）に処理を依頼 ---
-        log.debug("スクレイピング処理を開始します。");
-        InternalSyncOutcome outcome; // tryの外で宣言
-        try {
-            // ★★★ ここで渡す listener は、引数で受け取った正しい型の listener ★★★
-            outcome = scrapingOrchestrator.sync(universityId, password, existingCookies, listener);
-            log.debug("スクレイピング処理が完了しました。");
-        } catch (IOException e) { // ★ IOExceptionをキャッチする可能性
-             log.error("スクレイピング処理中にエラーが発生しました。", e);
-             // リスナーにエラーを通知することも検討
-             listener.onStatusUpdate("ERROR", "データの取得に失敗しました: " + e.getMessage());
-             throw e; // エラーを再スローしてトランザクションをロールバックさせる
-        } catch (Exception e) { // その他の予期せぬエラー
-             log.error("予期せぬエラーが発生しました。", e);
-             listener.onStatusUpdate("ERROR", "予期せぬエラーが発生しました: " + e.getMessage());
-             throw e;
+        String effectiveUniversityId = universityId;
+        if ((effectiveUniversityId == null || effectiveUniversityId.isBlank()) && credentialOpt.isPresent()) {
+            effectiveUniversityId = credentialOpt.get().getUniversityId();
         }
 
+        if (effectiveUniversityId == null || effectiveUniversityId.isBlank()) {
+            throw new IllegalStateException("大学IDを特定できませんでした。再度ログインしてください。");
+        }
+
+        log.debug("スクレイピング処理を開始します。");
+        InternalSyncOutcome outcome;
+        try {
+            outcome = scrapingOrchestrator.sync(effectiveUniversityId, password, existingCookies, listener);
+            log.debug("スクレイピング処理が完了しました。");
+        } catch (IOException e) {
+            log.error("スクレイピング処理中にエラーが発生しました。", e);
+            listener.onStatusUpdate("ERROR", "データの取得に失敗しました: " + e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            log.error("予期せぬエラーが発生しました。", e);
+            listener.onStatusUpdate("ERROR", "予期せぬエラーが発生しました: " + e.getMessage());
+            throw e;
+        }
 
         Map<String, String> newCookies = outcome.cookies();
 
-        // --- ステップ3: 新しいCookieが取得できていれば、DBを更新 ---
-        // DBから再度取得して、最新の状態で更新する (トランザクション分離レベルによっては必要)
-        UserCredential credentialToUpdate = userCredentialRepository.findByUniversityId(universityId)
-                .orElseGet(() -> new UserCredential(UUID.randomUUID(), universityId, null, null));
+        UserCredential credentialToUpdate;
+        if (credentialOpt.isPresent()) {
+            credentialToUpdate = credentialOpt.get();
+        } else {
+            UUID newId = profileUuid != null ? profileUuid : UUID.randomUUID();
+            credentialToUpdate = new UserCredential(newId, effectiveUniversityId, null, null);
+        }
+
+        String responseUserId = credentialOpt.map(UserCredential::getId).map(UUID::toString).orElse(null);
 
         if (rememberMe) {
             if (password == null || password.isBlank()) {
-                // rememberMe=trueなのにパスワードがない場合、DBから復号を試みるか、エラーにする
                 if (credentialToUpdate.getEncryptedPassword() == null) {
-                     log.error("rememberMe=trueですが、有効なパスワードがありません。");
-                     throw new IllegalStateException("パスワードを保存するには、有効なパスワードが必要です。");
+                    log.error("rememberMe=trueですが、有効なパスワードがありません。");
+                    throw new IllegalStateException("パスワードを保存するには、有効なパスワードが必要です。");
                 }
-                // password変数がnullでも、DBに暗号化パスワードがあれば更新は可能
                 log.debug("rememberMe=trueですがパスワード入力なし。DBの暗号化パスワードを維持します。");
             } else {
-                 // 新しいパスワードが提供された場合のみ暗号化して保存
-                 String encryptedPassword = encryptionService.encrypt(password);
-                 credentialToUpdate.setEncryptedPassword(encryptedPassword);
-                 log.debug("新しいパスワードを暗号化して保存します。");
+                String encryptedPassword = encryptionService.encrypt(password);
+                credentialToUpdate.setEncryptedPassword(encryptedPassword);
+                log.debug("新しいパスワードを暗号化して保存します。");
             }
 
-            // Cookieは必ず更新 (新しいCookieがなくてもnullで上書きされる)
+            credentialToUpdate.setUniversityId(effectiveUniversityId);
+
             if (newCookies != null && !newCookies.isEmpty()) {
                 String encryptedCookie = encryptionService.encrypt(gson.toJson(newCookies));
                 credentialToUpdate.setEncryptedSessionCookie(encryptedCookie);
                 log.debug("新しいCookieを暗号化して保存します。");
             } else {
-                // 新しいCookieが取得できなかった場合（ログイン失敗など）はnullをセット
                 credentialToUpdate.setEncryptedSessionCookie(null);
                 log.warn("新しいCookieが取得できなかったため、DBのCookieをクリアします。");
             }
-            userCredentialRepository.save(credentialToUpdate);
-            log.info("ユーザー資格情報 (ID: {}) を保存しました。", universityId);
+
+            UserCredential saved = userCredentialRepository.save(credentialToUpdate);
+            log.info("ユーザー資格情報 (ID: {}) を保存しました。", saved.getId());
+            responseUserId = saved.getId().toString();
 
         } else {
-            // rememberMeがfalseの場合、DBから資格情報を削除する
             if (credentialOpt.isPresent()) {
-                userCredentialRepository.delete(credentialToUpdate);
-                log.info("rememberMe=false のため、ユーザー資格情報 (ID: {}) を削除しました。", universityId);
+                userCredentialRepository.delete(credentialOpt.get());
+                log.info("rememberMe=false のため、ユーザー資格情報 (ID: {}) を削除しました。", credentialOpt.get().getId());
+                responseUserId = null;
             } else {
                 log.debug("rememberMe=false で、DBにも情報がないため、削除処理はスキップします。");
             }
         }
 
-
-        // Cookieを含まないDTOだけを返す
-        return outcome.syncResultDto();
+        SyncResult rawResult = outcome.syncResultDto();
+        return new SyncResult(
+                responseUserId,
+                rawResult.username(),
+                rawResult.syncedAt(),
+                rawResult.timetable(),
+                rawResult.assignments(),
+                rawResult.nextClass()
+        );
     }
 
     @Transactional
-    public void refreshSessionOnly(String universityId, LoginProgressListener listener) throws Exception {
-        Optional<UserCredential> credentialOpt = userCredentialRepository.findByUniversityId(universityId);
+    public void refreshSessionOnly(UUID userProfileId, LoginProgressListener listener) throws Exception {
+        Optional<UserCredential> credentialOpt = userCredentialRepository.findById(userProfileId);
         if (credentialOpt.isEmpty()) {
-            throw new IllegalStateException("指定されたユーザーIDの資格情報が見つかりません: " + universityId);
+            throw new IllegalStateException("指定されたユーザーIDの資格情報が見つかりません: " + userProfileId);
         }
 
         Map<String, String> existingCookies = Collections.emptyMap();
@@ -196,7 +230,7 @@ public class AuthService {
 
         Map<String, String> refreshedCookies;
         try {
-            refreshedCookies = scrapingOrchestrator.refreshSessionOnly(universityId, password, existingCookies, listener);
+            refreshedCookies = scrapingOrchestrator.refreshSessionOnly(credential.getUniversityId(), password, existingCookies, listener);
         } catch (IOException e) {
             log.error("セッション更新中にエラーが発生しました。", e);
             listener.onStatusUpdate("ERROR", "セッション更新に失敗しました: " + e.getMessage());
@@ -205,13 +239,13 @@ public class AuthService {
 
         if (refreshedCookies == null || refreshedCookies.isEmpty()) {
             listener.onStatusUpdate("SKIP", "有効なCookieがなかったためセッション更新をスキップしました。");
-            log.info("ユーザーID {} のセッション更新はスキップされました (新しいCookieなし)", universityId);
+            log.info("ユーザーID {} のセッション更新はスキップされました (新しいCookieなし)", credential.getId());
             return;
         }
 
         String encryptedCookie = encryptionService.encrypt(gson.toJson(refreshedCookies));
         credential.setEncryptedSessionCookie(encryptedCookie);
         userCredentialRepository.save(credential);
-        log.info("ユーザー資格情報 (ID: {}) のセッションCookieを更新しました。", universityId);
+        log.info("ユーザー資格情報 (ID: {}) のセッションCookieを更新しました。", credential.getId());
     }
 }

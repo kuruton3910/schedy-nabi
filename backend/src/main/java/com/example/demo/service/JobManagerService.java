@@ -43,15 +43,15 @@ public class JobManagerService {
      * @param rememberMe パスワードを保存するかどうか
      * @return 開始されたジョブのインスタンス
      */
-    public LoginJob startNewSyncJob(String username, String password, boolean rememberMe) {
+    public LoginJob startNewSyncJob(String userId, String username, String password, boolean rememberMe) {
         cleanupExpiredJobs(); // 古いジョブを削除
         String jobId = UUID.randomUUID().toString();
-        LoginJob job = new LoginJob(jobId, username, rememberMe);
+        LoginJob job = new LoginJob(jobId, userId, username, rememberMe);
         jobs.put(jobId, job); // 新しいジョブを登録
         log.debug("新しい同期ジョブを開始しました: jobId={}", jobId);
 
         // executorを使って、重たい処理をバックグラウンドで実行
-        executor.submit(() -> executeSyncJob(job, username, password)); // ★ rememberMeはjobオブジェクトから取得するので引数不要
+        executor.submit(() -> executeSyncJob(job, password)); // ★ rememberMeはjobオブジェクトから取得するので引数不要
 
         return job;
     }
@@ -76,7 +76,7 @@ public class JobManagerService {
      * バックグラウンドで同期処理を実行する本体。
      * LoginProgressListenerを実装し、AuthService経由でOrchestratorに渡す。
      */
-    private void executeSyncJob(LoginJob job, String username, String password) {
+    private void executeSyncJob(LoginJob job, String password) {
         job.updateStage("QUEUED", "ログインキューに登録しました");
         log.debug("ジョブ実行開始: jobId={}", job.getId());
 
@@ -100,7 +100,7 @@ public class JobManagerService {
 
             // ★ AuthService経由で同期処理を実行し、正しい型のリスナーを渡す ★
             // ★ job.isRememberMe() で rememberMe フラグを取得する ★
-            SyncResult result = authService.executeSync(username, password, job.isRememberMe(), listener);
+            SyncResult result = authService.executeSync(job.getUserId(), job.getUsername(), password, job.isRememberMe(), listener);
 
             job.complete(result, "manabaからの情報取得が完了しました。");
             log.debug("ジョブ実行成功: jobId={}", job.getId());
@@ -149,8 +149,9 @@ public class JobManagerService {
      * 非同期処理の進捗状況と結果を保持するクラス。
      */
     public static final class LoginJob {
-        private final String id;
-        private final String username; // 追加: どのユーザーのジョブか識別するため
+    private final String id;
+    private volatile String userId;
+    private volatile String username; // 追加: どのユーザーのジョブか識別するため
         private final boolean rememberMe;
         private volatile String status;
         private volatile String stage;
@@ -162,9 +163,10 @@ public class JobManagerService {
         private final Instant createdAt;
         private volatile Instant updatedAt;
 
-        private LoginJob(String id, String username, boolean rememberMe) { // usernameを追加
+        private LoginJob(String id, String userId, String username, boolean rememberMe) { // usernameを追加
             this.id = id;
-            this.username = username; // usernameを初期化
+            this.userId = userId;
+            this.username = username;
             this.rememberMe = rememberMe;
             this.status = "QUEUED";
             this.stage = "QUEUED";
@@ -174,7 +176,8 @@ public class JobManagerService {
 
         // --- Getters ---
         public String getId() { return id; }
-        public String getUsername() { return username; } // usernameのGetterを追加
+    public String getUserId() { return userId; }
+    public String getUsername() { return username; } // usernameのGetterを追加
         public boolean isRememberMe() { return rememberMe; }
         public String getStatus() { return status; }
         public String getStage() { return stage; }
@@ -234,6 +237,10 @@ public class JobManagerService {
             this.status = "SUCCESS";
             this.stage = "SUCCESS";
             this.message = finalMessage;
+            if (result != null) {
+                this.userId = result.userId();
+                this.username = result.username();
+            }
             this.mfaCode = null; // 成功時はMFA情報をクリア
             this.mfaMessage = null;
             this.error = null; // 成功時はエラー情報をクリア
