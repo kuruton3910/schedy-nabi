@@ -70,8 +70,8 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 1rem;
-  padding: 0.75rem;
+  margin-bottom: 0.85rem;
+  padding: 0.5rem 0.65rem;
   background: var(--surface);
   border-radius: 0.75rem;
   box-shadow: 0 2px 8px rgba(77, 208, 225, 0.1);
