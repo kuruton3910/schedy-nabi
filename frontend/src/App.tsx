@@ -146,7 +146,7 @@ function App() {
   // --- 画面表示ロジック ---
 
   // 自動同期が終わるまではローディング表示
-  if (autoSyncLoading) {
+  if (autoSyncLoading && !loginProgress) {
     return <div className="loading-fullscreen">読み込み中...</div>; // 簡単なローディング表示
   }
 
