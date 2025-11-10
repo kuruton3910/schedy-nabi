@@ -204,7 +204,9 @@ public class AuthService {
         }
 
         if (refreshedCookies == null || refreshedCookies.isEmpty()) {
-            throw new IllegalStateException("新しいセッションクッキーを取得できませんでした。");
+            listener.onStatusUpdate("SKIP", "有効なCookieがなかったためセッション更新をスキップしました。");
+            log.info("ユーザーID {} のセッション更新はスキップされました (新しいCookieなし)", universityId);
+            return;
         }
 
         String encryptedCookie = encryptionService.encrypt(gson.toJson(refreshedCookies));

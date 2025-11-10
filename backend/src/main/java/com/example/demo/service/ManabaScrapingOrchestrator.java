@@ -111,16 +111,13 @@ public class ManabaScrapingOrchestrator {
                 return refreshCookiesWithExisting(username, existingCookies, listener);
             } catch (IOException e) {
                 log.warn("Cookieによるセッション確認に失敗しました: {}", e.getMessage());
-                listener.onStatusUpdate("COOKIE_FAIL", "Cookieの再利用に失敗しました。パスワード認証へ移行します。");
+                listener.onStatusUpdate("COOKIE_FAIL", "保存済みCookieが無効です。セッション更新をスキップします。");
+                return Collections.emptyMap();
             }
         }
 
-        if (username == null || username.isBlank() || password == null || password.isBlank()) {
-            throw new IllegalStateException("有効な認証情報がありません。パスワードを入力して再試行してください。");
-        }
-
-        listener.onStatusUpdate("PASSWORD_AUTH", "パスワードでセッションを再取得しています...");
-        return loginAndFetchCookies(username, password, listener);
+        listener.onStatusUpdate("COOKIE_FAIL", "セッションCookieが存在しないため更新をスキップします。");
+        return Collections.emptyMap();
     }
 
     private InternalSyncOutcome scrapeWithExistingCookies(String username, Map<String, String> cookies, LoginProgressListener listener) throws IOException {
