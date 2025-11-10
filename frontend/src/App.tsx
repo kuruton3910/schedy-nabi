@@ -48,9 +48,7 @@ function App() {
       if (storedProfileId) {
         setShowWelcome(false); // IDがあればWelcomeは表示しない
         setLoading(true); // 自動同期中を示す
-        setStatusMessage(
-          `保存されたユーザーで自動同期を試みています...`
-        );
+        setStatusMessage(`保存されたユーザーで自動同期を試みています...`);
         try {
           // ★ rememberMe を true に修正 ★
           const response = await sync(
@@ -136,7 +134,7 @@ function App() {
     setError(null);
     setSuccessMessage(null);
     // ★ ログアウト時にIDをlocalStorageから削除
-  localStorage.removeItem(STORAGE_KEY_USER_ID);
+    localStorage.removeItem(STORAGE_KEY_USER_ID);
     setShowWelcome(false); // ログアウト後はログインフォーム表示
   };
 

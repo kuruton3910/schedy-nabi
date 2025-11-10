@@ -98,18 +98,25 @@ public class ScrapingService {
                         List<Map<String, String>> currentCellCourses = new ArrayList<>();
                         for(Element courseDiv : courseDivs) {
                             String courseName = courseDiv.selectFirst("a").text();
-                            String rawLocation = courseDiv.selectFirst(".couraselocationinfoV2").text();
-                            String prefixToRemove = days[dayIndex] + period + "："; 
-                            String location;
-                            if (rawLocation.startsWith(prefixToRemove)) {
-                                location = rawLocation.substring(prefixToRemove.length());
-                                } else {
-                                location = rawLocation;
-                                        }
+                            String rawLocation = courseDiv.selectFirst(".couraselocationinfoV2").text();                            
+                            String location = rawLocation; 
+                            int halfWidthIndex = rawLocation.indexOf(":");
+                            int fullWidthIndex = rawLocation.indexOf("：");                         
+                            int splitIndex = -1;                            
+                            if (halfWidthIndex != -1 && fullWidthIndex != -1) {
+                                splitIndex = Math.min(halfWidthIndex, fullWidthIndex);
+                            } else if (halfWidthIndex != -1) {
+                            splitIndex = halfWidthIndex;
+                            } else if (fullWidthIndex != -1) {
+                                splitIndex = fullWidthIndex;
+                            }                           
+                            if (splitIndex != -1) {
+                                location = rawLocation.substring(splitIndex + 1);
+                            }
                             courseList.add(new Course(days[dayIndex], period, courseName, location));
                             Map<String, String> data = new HashMap<>();
                             data.put("name", courseName);
-                            data.put("location", location); 
+                            data.put("location", location);
                             currentCellCourses.add(data);
                         }
                         if (cell.hasAttr("rowspan")) {
