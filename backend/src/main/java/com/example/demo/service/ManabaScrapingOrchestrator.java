@@ -129,7 +129,7 @@ public class ManabaScrapingOrchestrator {
     }
 
     private Map<String, String> refreshCookiesWithExisting(String username, Map<String, String> cookies, LoginProgressListener listener) throws IOException {
-        listener.onStatusUpdate("FETCH_HOME", "ホーム画面を取得中(Jsoup)...");
+        listener.onStatusUpdate("FETCH_HOME", "ホーム画面を取得中...");
 
         // ★最適化: .execute() を使ってレスポンスヘッダ(Set-Cookie)も取得可能にする
         Connection.Response response = Jsoup.connect(HOME_COURSE_URL)
