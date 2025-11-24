@@ -1,7 +1,8 @@
 package com.example.demo.service;
 
-import com.example.demo.dto.*; // DTOパッケージをインポート
+import com.example.demo.dto.*; 
 import io.github.bonigarcia.wdm.WebDriverManager;
+import org.jsoup.Connection; // 追加
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.openqa.selenium.*;
@@ -9,17 +10,15 @@ import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
+import org.slf4j.Logger; 
+import org.slf4j.LoggerFactory; 
 import org.springframework.stereotype.Service;
-import org.slf4j.Logger; // Loggerを追加
-import org.slf4j.LoggerFactory; // Loggerを追加
 
 import java.io.IOException;
 import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.*;
-import java.util.function.Predicate;
-// import java.util.NoSuchElementException; // ← ambiguous なので削除
 
 /**
  * Selenium/Jsoupによるログイン、スクレイピング、データ整形、ビジネスロジックを統括する司令塔Service。
@@ -29,9 +28,9 @@ import java.util.function.Predicate;
 @Service
 public class ManabaScrapingOrchestrator {
 
-    private static final Logger log = LoggerFactory.getLogger(ManabaScrapingOrchestrator.class); // Loggerを追加
+    private static final Logger log = LoggerFactory.getLogger(ManabaScrapingOrchestrator.class);
 
-    // --- 定数定義 (省略せず全て記述) ---
+    // --- 定数定義 ---
     private static final String LOGIN_URL = "https://ct.ritsumei.ac.jp/ct/login";
     private static final String HOME_COURSE_URL = "https://ct.ritsumei.ac.jp/ct/home_course";
     private static final String USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36";
@@ -68,7 +67,6 @@ public class ManabaScrapingOrchestrator {
             DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm", Locale.JAPANESE),
             DateTimeFormatter.ofPattern("yyyy/MM/dd H:mm", Locale.JAPANESE)
     };
-    // --- 定数定義ここまで ---
 
     private final ScrapingService scrapingService;
 
@@ -76,7 +74,7 @@ public class ManabaScrapingOrchestrator {
         this.scrapingService = scrapingService;
     }
 
-    // 内部的な結果とCookieを保持するレコード (変更なし)
+    // 内部的な結果とCookieを保持するレコード
     public record InternalSyncOutcome(SyncResult syncResultDto, Map<String, String> cookies) {}
 
     /**
@@ -84,6 +82,8 @@ public class ManabaScrapingOrchestrator {
      */
     public InternalSyncOutcome sync(String username, String password, Map<String, String> existingCookies, LoginProgressListener listener) throws IOException {
         listener.onStatusUpdate("AUTH_START", "認証処理を開始します...");
+        
+        // 1. Cookie認証 (Jsoup) の試行
         if (existingCookies != null && !existingCookies.isEmpty()) {
             try {
                 listener.onStatusUpdate("COOKIE_AUTH", "Cookie認証を試行中...");
@@ -91,18 +91,22 @@ public class ManabaScrapingOrchestrator {
             } catch (IOException e) {
                 log.warn("Cookie認証に失敗しました: {}", e.getMessage());
                 listener.onStatusUpdate("COOKIE_FAIL", "Cookie認証失敗。パスワード認証に移行します。");
-                // パスワード認証へフォールバック
+                // 失敗したら下へ進む (Seleniumへフォールバック)
             }
         }
 
+        // 2. パスワード認証 (Selenium) の実行
         if (username == null || username.isBlank() || password == null || password.isBlank()) {
-            throw new IllegalStateException("有効なCookieがありません。IDとパスワードを指定して再同期してください。");
+            throw new IllegalStateException("有効なCookieがなく、パスワードも指定されていません。");
         }
 
         listener.onStatusUpdate("PASSWORD_AUTH", "パスワード認証を開始します...");
         return loginAndScrape(username, password, listener);
     }
 
+    /**
+     * セッション更新のみを行うメソッド (AuthServiceで使う可能性があるため残す)
+     */
     public Map<String, String> refreshSessionOnly(String username, String password, Map<String, String> existingCookies, LoginProgressListener listener) throws IOException {
         listener.onStatusUpdate("AUTH_START", "セッション更新を開始します...");
         if (existingCookies != null && !existingCookies.isEmpty()) {
@@ -115,7 +119,6 @@ public class ManabaScrapingOrchestrator {
                 return Collections.emptyMap();
             }
         }
-
         listener.onStatusUpdate("COOKIE_FAIL", "セッションCookieが存在しないため更新をスキップします。");
         return Collections.emptyMap();
     }
@@ -126,25 +129,27 @@ public class ManabaScrapingOrchestrator {
     }
 
     private Map<String, String> refreshCookiesWithExisting(String username, Map<String, String> cookies, LoginProgressListener listener) throws IOException {
-        listener.onStatusUpdate("FETCH_HOME", "ホーム画面を取得中...");
+        listener.onStatusUpdate("FETCH_HOME", "ホーム画面を取得中(Jsoup)...");
 
-        org.jsoup.Connection.Response response = Jsoup.connect(HOME_COURSE_URL)
+        // ★最適化: .execute() を使ってレスポンスヘッダ(Set-Cookie)も取得可能にする
+        Connection.Response response = Jsoup.connect(HOME_COURSE_URL)
                 .cookies(cookies)
                 .userAgent(USER_AGENT)
                 .timeout(REQUEST_TIMEOUT_MILLIS)
                 .followRedirects(true)
                 .execute();
+        
         Document homeDoc = response.parse();
 
         if (isLoginPage(homeDoc)) {
-            throw new IOException("Cookieの有効期限が切れています。");
+            throw new IOException("Cookieの有効期限が切れています (ログインページを検知)。");
         }
         listener.onStatusUpdate("FETCH_HOME_SUCCESS", "ホーム画面の取得成功。");
 
+        // レスポンスでCookieが更新されていた場合マージする
         Map<String, String> updatedCookies = new HashMap<>(cookies);
-        Map<String, String> responseCookies = response.cookies();
-        if (responseCookies != null && !responseCookies.isEmpty()) {
-            updatedCookies.putAll(responseCookies);
+        if (response.cookies() != null) {
+            updatedCookies.putAll(response.cookies());
         }
 
         return updatedCookies;
@@ -158,42 +163,58 @@ public class ManabaScrapingOrchestrator {
     private Map<String, String> loginAndFetchCookies(String username, String password, LoginProgressListener listener) throws IOException {
         WebDriverManager.chromedriver().setup();
         ChromeOptions options = new ChromeOptions();
-        // ★★★ Chromeバイナリのパスを指定する行を追加 ★★★
+        
+        // ★最適化: 高速化・軽量化設定
         options.setBinary("/opt/google/chrome/chrome");
-        options.addArguments("--headless", "--disable-gpu", "--window-size=1920,1080", "--no-sandbox", "--disable-dev-shm-usage");
-        WebDriver driver = null; // finallyで閉じるために外で宣言
-        Map<String, String> freshCookies = Collections.emptyMap(); // 初期化
+        options.addArguments("--headless=new");
+        options.addArguments("--disable-gpu");
+        options.addArguments("--no-sandbox");
+        options.addArguments("--disable-dev-shm-usage");
+        options.addArguments("--blink-settings=imagesEnabled=false"); // 画像オフ
+        options.setPageLoadStrategy(PageLoadStrategy.EAGER); // 読み込み完了を待たない
+
+        WebDriver driver = null;
+        Map<String, String> freshCookies = Collections.emptyMap();
 
         try {
-            log.info("ChromeDriverをオプション付きで初期化します..."); // ログ追加
-            driver = new ChromeDriver(options); // 修正したoptionsを使う
-            log.info("ChromeDriverの初期化完了。"); // ログ追加
+            log.info("ChromeDriverを初期化します...");
+            driver = new ChromeDriver(options);
+            
             performLogin(driver, username, password, listener);
-            listener.onStatusUpdate("FETCH_COOKIE_PAGE", "ログイン後のCookie取得ページにアクセス中...");
-            driver.get(HOME_COURSE_URL); // Cookieを取得するためにホーム画面にアクセス
+            
+            listener.onStatusUpdate("FETCH_COOKIE_PAGE", "Cookie取得のためホーム画面へ遷移中...");
+            
+            // 現在のURLがホームでなければ移動 (performLoginで遷移しているはずだが念のため)
+            if (!driver.getCurrentUrl().contains("/ct/home")) {
+                driver.get(HOME_COURSE_URL);
+            }
+
             freshCookies = extractCookies(driver);
             listener.onStatusUpdate("FETCH_COOKIE_SUCCESS", "新しいCookieを取得しました。");
+
         } catch (Exception e) {
-            log.error("manabaへのログインまたはCookie取得中にエラーが発生しました。", e);
-            throw new IOException("manabaへのログインに失敗しました: " + e.getMessage(), e);
+            log.error("Seleniumによるログイン処理中にエラーが発生しました。", e);
+            throw new IOException("ログイン処理に失敗しました: " + e.getMessage(), e);
         } finally {
             if (driver != null) {
-                log.info("WebDriverを終了します..."); // ログ追加
+                log.info("WebDriverを終了します...");
                 driver.quit();
-                log.info("WebDriverを終了しました。"); // ログ追加
             }
         }
 
         if (freshCookies.isEmpty()) {
-            throw new IOException("ログイン後のCookie取得に失敗しました。");
+            throw new IOException("ログイン後のCookie取得に失敗しました (Cookieが空です)。");
         }
         return freshCookies;
     }
 
     private InternalSyncOutcome buildInternalSyncOutcome(String username, Map<String, String> cookies, LoginProgressListener listener) throws IOException {
         listener.onStatusUpdate("SCRAPE_START", "データのスクレイピングを開始します...");
+        
+        // ScrapingService (Jsoup) を呼び出し
         var rawCourses = scrapingService.parseTimetableToList(cookies);
         var rawAssignments = scrapingService.getAllAssignments(cookies);
+        
         listener.onStatusUpdate("SCRAPE_COMPLETE", "データのスクレイピングが完了しました。");
 
         listener.onStatusUpdate("DATA_PROCESSING", "取得データを整形中...");
@@ -201,141 +222,97 @@ public class ManabaScrapingOrchestrator {
         List<AssignmentEntry> assignments = convertAssignments(rawAssignments);
         NextClassCard nextClass = calculateNextClass(timetable);
         String syncedAt = LocalDateTime.now(JAPAN_ZONE).format(ISO_FORMATTER);
+        
         listener.onStatusUpdate("DATA_PROCESSING_COMPLETE", "データ整形完了。");
 
         SyncResult syncResultDto = new SyncResult(null, username, syncedAt, timetable, assignments, nextClass);
         return new InternalSyncOutcome(syncResultDto, cookies);
     }
 
-/**
-     * Seleniumを使ってログイン操作を実行します。
-     * ログイン失敗（ID/パスワード間違い）も検知します。
-     * @throws IOException ログイン失敗（ID/パスワード間違い、タイムアウトなど）
-     */
-    private void performLogin(WebDriver driver, String username, String password, LoginProgressListener listener) throws IOException{ 
-        
-        // ★ 待機時間を調整（Renderの遅さを考慮して全体的に長めに）
-        WebDriverWait longWait = new WebDriverWait(driver, Duration.ofSeconds(120)); // タイムアウト対策で120秒
+    // --- Seleniumでのログイン操作 ---
+    private void performLogin(WebDriver driver, String username, String password, LoginProgressListener listener) throws IOException {
+        // 高速化のためタイムアウトを60秒に設定
+        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(60));
 
         try {
             listener.onStatusUpdate("ACCESS_LOGIN_PAGE", "ログインページにアクセス中...");
             driver.get(LOGIN_URL);
 
             listener.onStatusUpdate("INPUT_USERNAME", "ユーザー名を入力中...");
-            longWait.until(ExpectedConditions.visibilityOfElementLocated(By.id("i0116"))).sendKeys(username);
+            wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("i0116"))).sendKeys(username);
+            
             listener.onStatusUpdate("CLICK_NEXT_1", "「次へ」をクリック中...");
-            longWait.until(ExpectedConditions.elementToBeClickable(By.id("idSIButton9"))).click();
+            wait.until(ExpectedConditions.elementToBeClickable(By.id("idSIButton9"))).click();
 
-            // ★★★ ユーザー名間違いのチェック ★★★
-            boolean usernameError = waitForErrorOrAdvance(
-                    driver,
-                    By.id("usernameError"),
-                    Duration.ofSeconds(8),
-                    drv -> isElementDisplayed(drv, By.id("i0118"))
-            );
-            if (usernameError) {
-                String errorMessage = extractTextSafely(driver, By.id("usernameError"));
-                log.error("ログイン失敗 (ユーザー名): {}", errorMessage);
-                throw new IOException("ログインに失敗しました: " + errorMessage);
+            // ユーザー名エラーチェック
+            if (isElementDisplayed(driver, By.id("usernameError"))) {
+                throw new IOException("ユーザー名が間違っています。");
             }
-
-            log.info("ユーザー名エラーは表示されませんでした。パスワード入力に進みます。");
 
             listener.onStatusUpdate("INPUT_PASSWORD", "パスワードを入力中...");
-            longWait.until(ExpectedConditions.visibilityOfElementLocated(By.id("i0118"))).sendKeys(password);
+            wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("i0118"))).sendKeys(password);
+            
             listener.onStatusUpdate("CLICK_SIGNIN", "「サインイン」をクリック中...");
-            longWait.until(ExpectedConditions.elementToBeClickable(By.id("idSIButton9"))).click();
+            wait.until(ExpectedConditions.elementToBeClickable(By.id("idSIButton9"))).click();
             listener.onStatusUpdate("PASSWORD_SUBMITTED", "パスワードを送信しました。");
 
-            // ★★★ パスワード間違いのチェック ★★★
-            boolean passwordError = waitForErrorOrAdvance(
-                    driver,
-                    By.id("passwordError"),
-                    Duration.ofSeconds(8),
-                    drv -> isElementDisplayed(drv, By.id("idRichContext_DisplaySign"))
-                            || drv.getCurrentUrl().contains("/ct/home")
-                            || isKmsiPromptDisplayed(drv)
-            );
-            if (passwordError) {
-                String errorMessage = extractTextSafely(driver, By.id("passwordError"));
-                log.error("ログイン失敗 (パスワード): {}", errorMessage);
-                throw new IOException("ログインに失敗しました: " + errorMessage);
+            // パスワードエラーチェック
+            if (isElementDisplayed(driver, By.id("passwordError"))) {
+                throw new IOException("パスワードが間違っています。");
             }
 
-            log.info("パスワードエラーは表示されませんでした。MFA/KMSIに進みます。");
-
             detectMfaPrompt(driver, listener);
-            handleStaySignedInPrompt(driver, listener, longWait); 
+            handleStaySignedInPrompt(driver, listener, wait);
 
             listener.onStatusUpdate("WAITING_HOME", "ホーム画面への遷移を待機中...");
-            longWait.until(ExpectedConditions.urlContains("/ct/home")); 
+            wait.until(ExpectedConditions.urlContains("/ct/home"));
             listener.onStatusUpdate("LOGIN_SUCCESS", "ログイン成功を確認しました。");
 
         } catch (TimeoutException e) {
-            log.error("ログイン操作中にタイムアウトが発生しました。", e);
-            // タイムアウトした瞬間のスクリーンショットを撮る (Renderでは難しいかもしれないが、デバッグ用に)
-            // saveScreenshot(driver, "timeout_screenshot.png");
-            throw new IOException("ログインページが時間内に表示されませんでした。処理が遅延している可能性があります。", e);
+            throw new IOException("ログイン操作がタイムアウトしました。", e);
         }
     }
+
+    // --- ヘルパーメソッド ---
 
     private void detectMfaPrompt(WebDriver driver, LoginProgressListener listener) {
-        WebDriverWait mfaWait = new WebDriverWait(driver, Duration.ofSeconds(30)); 
         try {
-            log.info("MFAプロンプトが表示されるか確認中...");
+            WebDriverWait mfaWait = new WebDriverWait(driver, Duration.ofSeconds(5)); // 短い待機
             mfaWait.until(ExpectedConditions.visibilityOfElementLocated(By.id("idRichContext_DisplaySign")));
+            
             String displayCode = extractTextSafely(driver, By.id("idRichContext_DisplaySign"));
             if (displayCode != null && !displayCode.isBlank()) {
-                String normalized = displayCode.trim();
-                log.info("MFAコードを検出: {}", normalized);
-                listener.onMfaRequired(normalized, "認証アプリで承認が必要です [" + normalized + "]");
-            } else {
-                log.info("MFAコード要素は見つかったが、コードが空でした。");
+                String code = displayCode.trim();
+                log.info("MFAコード検出: {}", code);
+                listener.onMfaRequired(code, "認証アプリで承認が必要です [" + code + "]");
+                
+                // MFA承認待ち (最大60秒)
+                new WebDriverWait(driver, Duration.ofSeconds(60))
+                    .until(ExpectedConditions.invisibilityOfElementLocated(By.id("idRichContext_DisplaySign")));
             }
         } catch (TimeoutException ignored) {
-            log.info("MFAプロンプトは表示されませんでした。");
-        } catch (Exception e) {
-            log.error("MFAプロンプト検出中に予期せぬエラーが発生しました。", e);
+            // MFAなし
         }
     }
 
-    private void handleStaySignedInPrompt(WebDriver driver, LoginProgressListener listener, WebDriverWait kmsiWait) {
+    private void handleStaySignedInPrompt(WebDriver driver, LoginProgressListener listener, WebDriverWait wait) {
         try {
-            log.info("「サインイン状態の維持」プロンプトが表示されるか確認中...");
-            kmsiWait.until(d -> { 
-                try {
-                    WebElement button = d.findElement(By.id("idSIButton9"));
-                    if (button.isDisplayed() && shouldClickStaySignedIn(button)) {
-                        log.info("「サインイン状態の維持」プロンプトを「はい」でクリックします。");
-                        listener.onStatusUpdate("CONFIRM_KMSI", "サインイン状態の維持を確認しています...");
-                        button.click();
-                        return true;
-                    } else if (d.getCurrentUrl().contains("/ct/home")) {
-                        log.info("すでにホーム画面に遷移済みのため、KMSI確認はスキップします。");
-                        return true;
-                    }
-                } catch (org.openqa.selenium.NoSuchElementException ignored) {
-                    if (d.getCurrentUrl().contains("/ct/home")) {
-                        log.info("すでにホーム画面に遷移済みのため、KMSI確認はスキップします。");
-                        return true;
-                    }
-                    return false;
-                } catch (Exception e) {
-                    log.warn("KMSIプロンプトの処理中にエラーが発生しましたが、続行します。", e);
-                    return true;
-                }
-                return false;
-            });
-        } catch (TimeoutException ignored) {
-            log.info("「サインイン状態の維持」プロンプトは表示されませんでした。");
-        } catch (Exception e) {
-            log.error("KMSIプロンプト処理中に予期せぬエラーが発生しました。", e);
+            // KMSIまたはホーム画面が出るまで待つ
+            wait.until(d -> isElementDisplayed(d, By.id("idSIButton9")) || d.getCurrentUrl().contains("/ct/home"));
+
+            if (driver.getCurrentUrl().contains("/ct/home")) return;
+
+            WebElement button = driver.findElement(By.id("idSIButton9"));
+            if (button.isDisplayed() && shouldClickStaySignedIn(button)) {
+                listener.onStatusUpdate("CONFIRM_KMSI", "サインイン状態の維持を確認しています...");
+                button.click();
+            }
+        } catch (Exception ignored) {
+            // 無視して進む
         }
     }
 
-    // --- 他のヘルパーメソッド (shouldClickStaySignedIn, containsAffirmative, extractTextSafely, extractCookies, isLoginPage, convertCourses, convertAssignments, normalizeDeadline, calculateNextClass, nextOccurrence, parseTime, extractDigits, formatIsoDuration) は変更なし ---
     private boolean shouldClickStaySignedIn(WebElement button) {
-        if (button == null) return false;
         String text = button.getText();
         String value = button.getAttribute("value");
         return containsAffirmative(text) || containsAffirmative(value);
@@ -350,15 +327,29 @@ public class ManabaScrapingOrchestrator {
     private String extractTextSafely(WebDriver driver, By locator) {
         try {
             return driver.findElement(locator).getText();
-        } catch (org.openqa.selenium.NoSuchElementException ignored) { // ★ 完全修飾名
+        } catch (Exception ignored) {
             return null;
         }
     }
 
+    private boolean isElementDisplayed(WebDriver driver, By locator) {
+        try {
+            WebElement element = driver.findElement(locator);
+            return element != null && element.isDisplayed();
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    // ★最適化: 現在のドメインのクッキーをすべて抽出する
     private Map<String, String> extractCookies(WebDriver driver) {
         Map<String, String> cookies = new HashMap<>();
         try {
-            driver.manage().getCookies().forEach(cookie -> cookies.put(cookie.getName(), cookie.getValue()));
+            Set<Cookie> seleniumCookies = driver.manage().getCookies();
+            for (Cookie c : seleniumCookies) {
+                // すべてのクッキーを保存してセッション切れを防ぐ
+                cookies.put(c.getName(), c.getValue());
+            }
         } catch (Exception e) {
             log.error("Cookieの抽出中にエラーが発生しました。", e);
         }
@@ -379,7 +370,7 @@ public class ManabaScrapingOrchestrator {
 
     private List<CourseEntry> convertCourses(List<com.example.demo.dto.Course> rawCourses) {
         List<CourseEntry> entries = new ArrayList<>();
-        if (rawCourses == null) return entries; // Nullチェック追加
+        if (rawCourses == null) return entries;
         for (var course : rawCourses) {
             String periodKey = extractDigits(course.period());
             PeriodTime period = PERIOD_TIME_TABLE.get(periodKey);
@@ -393,57 +384,10 @@ public class ManabaScrapingOrchestrator {
         }
         return entries;
     }
-    private boolean waitForErrorOrAdvance(WebDriver driver, By errorLocator, Duration timeout, Predicate<WebDriver> progressCondition) {
-        long deadline = System.nanoTime() + timeout.toNanos();
-        while (System.nanoTime() < deadline) {
-            if (isElementDisplayed(driver, errorLocator)) {
-                return true;
-            }
-            if (progressCondition != null) {
-                try {
-                    if (progressCondition.test(driver)) {
-                        return false;
-                    }
-                } catch (Exception ignored) {
-                    // progress condition evaluation can be noisy; ignore and retry
-                }
-            }
-            sleepSilently(200);
-        }
-        return false;
-    }
-
-    private boolean isElementDisplayed(WebDriver driver, By locator) {
-        try {
-            WebElement element = driver.findElement(locator);
-            return element != null && element.isDisplayed();
-        } catch (org.openqa.selenium.NoSuchElementException | StaleElementReferenceException ignored) {
-            return false;
-        }
-    }
-
-    private boolean isKmsiPromptDisplayed(WebDriver driver) {
-        try {
-            WebElement prompt = driver.findElement(By.xpath("//*[contains(text(),'サインイン状態の維持')]") );
-            return prompt.isDisplayed();
-        } catch (org.openqa.selenium.NoSuchElementException ignored) {
-            return false;
-        } catch (Exception ignored) {
-            return false;
-        }
-    }
-
-    private void sleepSilently(long millis) {
-        try {
-            Thread.sleep(millis);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
 
     private List<AssignmentEntry> convertAssignments(List<com.example.demo.dto.Assignment> assignments) {
         List<AssignmentEntry> converted = new ArrayList<>();
-        if (assignments == null) return converted; // Nullチェック追加
+        if (assignments == null) return converted;
         for (var assignment : assignments) {
             converted.add(new AssignmentEntry(
                     "assignment-" + UUID.randomUUID().toString().replaceAll("-", ""),
@@ -462,11 +406,10 @@ public class ManabaScrapingOrchestrator {
             try {
                 LocalDateTime parsed = LocalDateTime.parse(cleaned, formatter);
                 return parsed.format(ISO_FORMATTER);
-            } catch (DateTimeParseException ignored) {
-            }
+            } catch (DateTimeParseException ignored) {}
         }
         log.warn("不明な日付フォーマットのため正規化できませんでした: {}", deadline);
-        return cleaned; // 解析できなかった場合は元の文字列(クリーニング後)を返す
+        return cleaned;
     }
 
     private NextClassCard calculateNextClass(List<CourseEntry> timetable) {
@@ -478,7 +421,6 @@ public class ManabaScrapingOrchestrator {
         for (CourseEntry course : timetable) {
             DayOfWeek targetDay = DAY_OF_WEEK_MAP.get(course.day());
             if (targetDay == null) continue;
-
             LocalTime startTime = parseTime(course.startTime());
             if (startTime == null) continue;
 
@@ -489,7 +431,7 @@ public class ManabaScrapingOrchestrator {
             if (bestDuration == null || untilStart.compareTo(bestDuration) < 0) {
                 bestDuration = untilStart;
                 LocalTime endTime = parseTime(course.endTime());
-                if (endTime == null) endTime = startTime.plusMinutes(90); // デフォルト90分授業と仮定
+                if (endTime == null) endTime = startTime.plusMinutes(90);
                 LocalDateTime endDateTime = LocalDateTime.of(startDateTime.toLocalDate(), endTime);
 
                 bestCard = new NextClassCard(
@@ -507,28 +449,24 @@ public class ManabaScrapingOrchestrator {
         int diff = (targetDay.getValue() - base.getDayOfWeek().getValue() + 7) % 7;
         LocalDate targetDate = base.toLocalDate().plusDays(diff);
         LocalDateTime candidate = LocalDateTime.of(targetDate, startTime);
-        // 同じ日の授業で、すでに開始時刻を過ぎている場合は来週にする
         return (diff == 0 && candidate.isBefore(base)) ? candidate.plusWeeks(1) : candidate;
     }
 
     private LocalTime parseTime(String value) {
         if (value == null || value.isBlank()) return null;
         try {
-            return LocalTime.parse(value); // HH:mm 形式を想定
+            return LocalTime.parse(value);
         } catch (DateTimeParseException ignored) {
-            log.warn("不正な時刻フォーマットです: {}", value);
             return null;
         }
     }
 
     private String extractDigits(String value) {
-        if (value == null) return null;
-        String digits = value.replaceAll("[^0-9]", "");
-        return digits.isEmpty() ? value : digits; // 数字がなければ元の値を返す
+        return value == null ? null : value.replaceAll("[^0-9]", "");
     }
 
     private String formatIsoDuration(Duration duration) {
-        if (duration == null || duration.isNegative()) return "PT0M"; // 負の期間は0分とする
+        if (duration == null || duration.isNegative()) return "PT0M";
         long days = duration.toDays();
         duration = duration.minusDays(days);
         long hours = duration.toHours();
@@ -537,20 +475,16 @@ public class ManabaScrapingOrchestrator {
 
         StringBuilder builder = new StringBuilder("P");
         if (days > 0) builder.append(days).append('D');
-        if (hours > 0 || minutes > 0 || builder.length() == 1) { // 時間か分があるか、PしかなければTを追加
+        if (hours > 0 || minutes > 0 || builder.length() == 1) {
             builder.append('T');
             if (hours > 0) builder.append(hours).append('H');
             if (minutes > 0) builder.append(minutes).append('M');
         }
-        // もし PT のままなら、 PT0M にする
         if (builder.toString().equals("PT")) return "PT0M";
-        // もし P のままなら（0日の場合）、PT0M にする
         if (builder.toString().equals("P")) return "PT0M";
-
         return builder.toString();
     }
 
-    // --- LoginProgressListener インターフェース定義 ---
     public interface LoginProgressListener {
         void onStatusUpdate(String status, String message);
         void onMfaRequired(String mfaCode, String message);

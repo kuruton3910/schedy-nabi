@@ -57,13 +57,15 @@ public class ScrapingService {
 
     /**
      * 指定されたCookieを使用して時間割ページを解析し、授業のリストを返します。
+     * ★重要: 確実に時間割（曜日）形式で取得するため、URLパラメータ chglistformat=timetable を付与します。
      * @param cookies ログイン後のセッションCookie
      * @return 授業のリスト
      * @throws IOException ページの取得に失敗した場合
      */
     public List<Course> parseTimetableToList(Map<String, String> cookies) throws IOException {
-        // 時間割ページのURLは実際のURLに合わせてください
-        String timetableUrl = "https://ct.ritsumei.ac.jp/ct/home_course";
+        // ★★★ 修正点: ?chglistformat=timetable を追加して、強制的に曜日表示にする ★★★
+        String timetableUrl = "https://ct.ritsumei.ac.jp/ct/home_course?chglistformat=timetable";
+        
         Document doc = Jsoup.connect(timetableUrl).cookies(cookies).get();
 
         log.debug("【時間割の解析を開始】");
@@ -71,6 +73,8 @@ public class ScrapingService {
         Element timetable = doc.selectFirst("#courselistweekly table.stdlist");
         if (timetable == null) {
             log.warn("時間割テーブルが見つかりませんでした。");
+            // ユーザー設定がリスト形式などの場合、テーブル構造が違う可能性があるためログに残す
+            log.debug("取得したHTMLの一部: {}", doc.body().html().substring(0, Math.min(500, doc.body().html().length())));
             return courseList;
         }
 
@@ -98,21 +102,28 @@ public class ScrapingService {
                         List<Map<String, String>> currentCellCourses = new ArrayList<>();
                         for(Element courseDiv : courseDivs) {
                             String courseName = courseDiv.selectFirst("a").text();
-                            String rawLocation = courseDiv.selectFirst(".couraselocationinfoV2").text();                            
-                            String location = rawLocation; 
-                            int halfWidthIndex = rawLocation.indexOf(":");
-                            int fullWidthIndex = rawLocation.indexOf("：");                         
-                            int splitIndex = -1;                            
-                            if (halfWidthIndex != -1 && fullWidthIndex != -1) {
-                                splitIndex = Math.min(halfWidthIndex, fullWidthIndex);
-                            } else if (halfWidthIndex != -1) {
-                            splitIndex = halfWidthIndex;
-                            } else if (fullWidthIndex != -1) {
-                                splitIndex = fullWidthIndex;
-                            }                           
-                            if (splitIndex != -1) {
-                                location = rawLocation.substring(splitIndex + 1);
+                            
+                            // 教室情報の抽出ロジック
+                            String location = "";
+                            Element locationElement = courseDiv.selectFirst(".couraselocationinfoV2");
+                            if (locationElement != null) {
+                                String rawLocation = locationElement.text();
+                                location = rawLocation; 
+                                int halfWidthIndex = rawLocation.indexOf(":");
+                                int fullWidthIndex = rawLocation.indexOf("：");                         
+                                int splitIndex = -1;                            
+                                if (halfWidthIndex != -1 && fullWidthIndex != -1) {
+                                    splitIndex = Math.min(halfWidthIndex, fullWidthIndex);
+                                } else if (halfWidthIndex != -1) {
+                                    splitIndex = halfWidthIndex;
+                                } else if (fullWidthIndex != -1) {
+                                    splitIndex = fullWidthIndex;
+                                }                               
+                                if (splitIndex != -1) {
+                                    location = rawLocation.substring(splitIndex + 1).trim(); // trim()を追加
+                                }
                             }
+                            
                             courseList.add(new Course(days[dayIndex], period, courseName, location));
                             Map<String, String> data = new HashMap<>();
                             data.put("name", courseName);
