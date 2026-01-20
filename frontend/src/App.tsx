@@ -4,29 +4,29 @@ import { useState, useEffect, useCallback } from "react";
 import LoginForm from "./components/LoginForm";
 import Dashboard from "./components/Dashboard";
 import LoginProgressScreen from "./components/LoginProgressScreen";
-import WelcomePage from "./components/WelcomePage"; // WelcomePageもimport
+import WelcomePage from "./components/WelcomePage";
 import {
   LoginPayload,
   SyncResponse,
   SyncJobResponse,
   ManualClassPayload,
-} from "./types"; // 型定義をimport
+} from "./types";
 import {
   sync,
   invalidateToken,
   addManualClass,
   fetchTimetable,
-} from "./api/client"; // APIクライアントをimport
+} from "./api/client";
 import getMockSession from "./mock/mockData";
 
 // localStorageに保存するキー
 const STORAGE_KEY_USER_ID = "schedyNabiUserProfileId";
 
 function App() {
-  const [showWelcome, setShowWelcome] = useState(true); // Welcome画面の表示状態
+  const [showWelcome, setShowWelcome] = useState(true);
   const [session, setSession] = useState<SyncResponse | null>(null);
-  const [loading, setLoading] = useState(false); // 通常のローディング状態
-  const [autoSyncLoading, setAutoSyncLoading] = useState(true); // ★ 自動同期専用のローディング状態
+  const [loading, setLoading] = useState(false);
+  const [autoSyncLoading, setAutoSyncLoading] = useState(true);
   const [manualLoading, setManualLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -79,8 +79,7 @@ function App() {
     };
 
     attemptAutoSync();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // 初回マウント時にのみ実行
+  }, []);
 
   // --- ログイン処理 (成功時にIDを保存) ---
   const handleLogin = async (payload: LoginPayload) => {

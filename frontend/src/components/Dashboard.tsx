@@ -65,14 +65,6 @@ const Dashboard = ({
           >
             ログアウト
           </button>
-          <button
-            className="button button-primary"
-            onClick={onRefresh}
-            disabled={loading}
-            style={{ padding: "0.3rem 0.9rem" }}
-          >
-            {loading ? "情報取得中..." : "更新"}
-          </button>
         </div>
       </header>
 
